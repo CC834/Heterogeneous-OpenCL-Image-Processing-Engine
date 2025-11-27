@@ -1,0 +1,10 @@
+{
+    "files.associations": {
+        "*.cl": "opencl",
+        "string.h": "c",
+        "stdlib.h": "c",
+        "fcntl.h": "c",
+        "cl.h": "c",
+        "opencl_utils.h": "c"
+    }
+}
