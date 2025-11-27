@@ -1,0 +1,9 @@
+/build*/
+/artifacts/
+/web/node_modules/
+/web/dist/
+/.cache/
+*.user
+*.swp
+*.tsbuildinfo
+.DS_Store
