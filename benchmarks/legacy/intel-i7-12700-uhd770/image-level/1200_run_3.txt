@@ -1,0 +1,89 @@
+Mode: HETEROGENEOUS (CPU + GPU)
+GPU ratio: 83.4% GPU, 16.6% CPU
+========== HETEROGENEOUS CONFIGURATION ==========
+Input file: ./image_320x240.jpg
+Number of images in stream: 5000
+Batch size: 1200 images
+Number of batches: 5
+Work-group size: 16x16
+Execution mode : 0
+================================================
+
+Original image loaded: 320x240, 3 channels
+Size of one image: 230400 bytes (225.00 KB)
+Original image converted to interleaved format
+
+Platform 0: Intel(R) FPGA Emulation Platform for OpenCL(TM)
+Platform 1: Intel(R) OpenCL
+Platform 2: Intel(R) OpenCL HD Graphics
+CPU device: 12th Gen Intel(R) Core(TM) i7-12700
+GPU device: Intel(R) Graphics [0x4680]
+
+Loading kernel source...
+Kernel source loaded (2054 bytes)
+Building kernel for CPU...
+CPU kernel built successfully
+Building kernel for GPU...
+GPU kernel built successfully
+Kernel objects created
+
+Allocating device buffers...
+Device buffers allocated
+
+Setting kernel arguments...
+Kernel arguments set
+
+Global work size: 320 x 240
+Local work size: 16 x 16
+
+Starting batch processing of 5000 images in 5 batches...
+
+All batches finished!
+
+========== PERFORMANCE RESULTS ==========
+
+BATCH SIZE : 1200
+1. OVERALL EXECUTION TIME
+   Total wall-clock time: 1066.42 ms (1.07 seconds)
+   Total images processed: 5000
+
+2. CPU DEVICE (processed 834 images)
+   Total CPU time:        499.54 ms
+   - Transfer IN:         24.45 ms (4.9%)
+   - Kernel execution:    193.05 ms (38.6%)
+   - Transfer OUT:        282.05 ms (56.5%)
+   Average per image:     0.60 ms
+
+3. GPU DEVICE (processed 4166 images)
+   Total GPU time:        494.34 ms
+   - Transfer IN:         88.17 ms (17.8%)
+   - Kernel execution:    357.77 ms (72.4%)
+   - Transfer OUT:        48.41 ms (9.8%)
+   Average per image:     0.12 ms
+
+====================
+4. DEVICE COMPARISON
+   GPU is 1.01x FASTER than CPU
+   CPU/GPU time ratio: 1.01
+
+5. WORKLOAD BALANCE
+   Workload imbalance: 1.0%
+   CPU is the BOTTLENECK (5.20 ms slower)
+
+6. BOTTLENECK IDENTIFICATION
+   CPU bottleneck: COMMUNICATION (61.4% of time)
+   GPU bottleneck: COMPUTATION (72.4% of time)
+
+7. THROUGHPUT
+   Overall throughput: 360.08 Megapixels/sec
+   Images per second: 4688.60
+
+=========================================
+
+8. OPTIMAL RATIO RECOMMENDATION
+   Based on measured performance:
+   CPU: 0.599 ms/image
+   GPU: 0.119 ms/image
+   Recommended GPU ratio: 83.5%
+   Run with: ./heterogeneous_blur both 0.835
+
