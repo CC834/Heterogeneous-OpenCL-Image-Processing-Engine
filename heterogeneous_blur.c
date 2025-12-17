@@ -33,9 +33,6 @@ double get_time_ms() {
     return (tv.tv_sec * 1000.0) + (tv.tv_usec / 1000.0);
 }
 
-
-
-
 int main(int argc, char** argv)
 {
 
@@ -341,7 +338,6 @@ int main(int argc, char** argv)
 
     printf("Global work size: %zu x %zu\n", global_size[0], global_size[1]);
     printf("Local work size: %zu x %zu\n\n", local_size[0], local_size[1]); 
-
 
 
     // ======================== BATCH PROCESSING ========================
@@ -650,8 +646,6 @@ int main(int argc, char** argv)
     printf("\n");
 
     printf("=========================================\n\n");
-    // Optimal ratio calculation (only for heterogeneous mode)
-
     if (total_images_cpu > 0 && total_images_gpu > 0) {
         double t_cpu_per_image = time_cpu_total / total_images_cpu;
         double t_gpu_per_image = time_gpu_total / total_images_gpu;
