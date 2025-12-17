@@ -33,6 +33,141 @@ double get_time_ms() {
     return (tv.tv_sec * 1000.0) + (tv.tv_usec / 1000.0);
 }
 
+
+float calibrate_gpu_ratio(
+    cl_command_queue q_cpu, cl_command_queue q_gpu,
+    cl_kernel kernel_cpu, cl_kernel kernel_gpu,
+    cl_mem buffer_cpu_input, cl_mem buffer_cpu_output,
+    cl_mem buffer_gpu_input, cl_mem buffer_gpu_output,
+    unsigned char *test_image, size_t image_size,
+    size_t *global_size, size_t *local_size)
+{
+    cl_int err;
+    const int WARMUP_IMAGES = 5;
+    const int TEST_IMAGES = 20;
+    double time_cpu = 0, time_gpu = 0;
+
+    // Allocate separate output buffer (Fix #1)
+    unsigned char *host_out = (unsigned char*)malloc(image_size);
+    if(!host_out){
+        printf("Error: Failed to allocate host_out for calibration\n");
+        return 0.5f;
+    }
+
+    // Arrays to store events
+    cl_event cpu_events[TEST_IMAGES * 3];
+    cl_event gpu_events[TEST_IMAGES * 3];
+
+    printf("Running calibration (%d warmup + %d test images per device)...\n", WARMUP_IMAGES, TEST_IMAGES);
+
+    // ============ CPU Warm-up (Fix #5 + Fix warmup event lifetime) ============
+    // Make warmup blocking so we don't create/release events before completion
+    for (int i = 0; i < WARMUP_IMAGES; i++) {
+        err = clEnqueueWriteBuffer(q_cpu, buffer_cpu_input, CL_TRUE, 0, image_size, test_image, 0, NULL, NULL);
+        cl_error(err, "CPU warmup write failed");
+
+        err = clEnqueueNDRangeKernel(q_cpu, kernel_cpu, 2, NULL, global_size, local_size, 0, NULL, NULL);
+        cl_error(err, "CPU warmup kernel launch failed");
+
+        err = clEnqueueReadBuffer(q_cpu, buffer_cpu_output, CL_TRUE, 0, image_size, host_out, 0, NULL, NULL);
+        cl_error(err, "CPU warmup read failed");
+    }
+
+    // ============ CPU Test (Fix #3 - queue all, then finish) ============
+    for (int i = 0; i < TEST_IMAGES; i++) {
+        err = clEnqueueWriteBuffer(q_cpu, buffer_cpu_input, CL_FALSE, 0, image_size, test_image, 0, NULL, &cpu_events[i*3]);
+        cl_error(err, "CPU test write failed");
+
+        err = clEnqueueNDRangeKernel(q_cpu, kernel_cpu, 2, NULL, global_size, local_size, 1, &cpu_events[i*3], &cpu_events[i*3+1]);
+        cl_error(err, "CPU test kernel launch failed");
+
+        err = clEnqueueReadBuffer(q_cpu, buffer_cpu_output, CL_FALSE, 0, image_size, host_out, 1, &cpu_events[i*3+1], &cpu_events[i*3+2]);
+        cl_error(err, "CPU test read failed");
+    }
+    err = clFinish(q_cpu);
+    cl_error(err, "CPU clFinish failed");
+
+    // Collect CPU timing
+    for (int i = 0; i < TEST_IMAGES; i++) {
+        cl_ulong t_start, t_end;
+
+        err = clGetEventProfilingInfo(cpu_events[i*3], CL_PROFILING_COMMAND_START, sizeof(t_start), &t_start, NULL);
+        cl_error(err, "CPU profiling START failed");
+
+        err = clGetEventProfilingInfo(cpu_events[i*3+2], CL_PROFILING_COMMAND_END, sizeof(t_end), &t_end, NULL);
+        cl_error(err, "CPU profiling END failed");
+
+        time_cpu += (t_end - t_start) / 1000000.0;
+
+        clReleaseEvent(cpu_events[i*3]);
+        clReleaseEvent(cpu_events[i*3+1]);
+        clReleaseEvent(cpu_events[i*3+2]);
+    }
+
+    // ============ GPU Warm-up (Fix #5 + Fix warmup event lifetime) ============
+    for (int i = 0; i < WARMUP_IMAGES; i++) {
+        err = clEnqueueWriteBuffer(q_gpu, buffer_gpu_input, CL_TRUE, 0, image_size, test_image, 0, NULL, NULL);
+        cl_error(err, "GPU warmup write failed");
+
+        err = clEnqueueNDRangeKernel(q_gpu, kernel_gpu, 2, NULL, global_size, local_size, 0, NULL, NULL);
+        cl_error(err, "GPU warmup kernel launch failed");
+
+        err = clEnqueueReadBuffer(q_gpu, buffer_gpu_output, CL_TRUE, 0, image_size, host_out, 0, NULL, NULL);
+        cl_error(err, "GPU warmup read failed");
+    }
+
+    // ============ GPU Test (Fix #3 - queue all, then finish) ============
+    for (int i = 0; i < TEST_IMAGES; i++) {
+        err = clEnqueueWriteBuffer(q_gpu, buffer_gpu_input, CL_FALSE, 0, image_size, test_image, 0, NULL, &gpu_events[i*3]);
+        cl_error(err, "GPU test write failed");
+
+        err = clEnqueueNDRangeKernel(q_gpu, kernel_gpu, 2, NULL, global_size, local_size, 1, &gpu_events[i*3], &gpu_events[i*3+1]);
+        cl_error(err, "GPU test kernel launch failed");
+
+        err = clEnqueueReadBuffer(q_gpu, buffer_gpu_output, CL_FALSE, 0, image_size, host_out, 1, &gpu_events[i*3+1], &gpu_events[i*3+2]);
+        cl_error(err, "GPU test read failed");
+    }
+    err = clFinish(q_gpu);
+    cl_error(err, "GPU clFinish failed");
+
+    // Collect GPU timing
+    for (int i = 0; i < TEST_IMAGES; i++) {
+        cl_ulong t_start, t_end;
+
+        err = clGetEventProfilingInfo(gpu_events[i*3], CL_PROFILING_COMMAND_START, sizeof(t_start), &t_start, NULL);
+        cl_error(err, "GPU profiling START failed");
+
+        err = clGetEventProfilingInfo(gpu_events[i*3+2], CL_PROFILING_COMMAND_END, sizeof(t_end), &t_end, NULL);
+        cl_error(err, "GPU profiling END failed");
+
+        time_gpu += (t_end - t_start) / 1000000.0;
+
+        clReleaseEvent(gpu_events[i*3]);
+        clReleaseEvent(gpu_events[i*3+1]);
+        clReleaseEvent(gpu_events[i*3+2]);
+    }
+
+    free(host_out);
+
+    // Calculate optimal ratio
+    double t_cpu_per_image = time_cpu / TEST_IMAGES;
+    double t_gpu_per_image = time_gpu / TEST_IMAGES;
+
+    printf("Calibration results:\n");
+    printf("  CPU: %.3f ms/image\n", t_cpu_per_image);
+    printf("  GPU: %.3f ms/image\n", t_gpu_per_image);
+
+    double denom = (t_cpu_per_image + t_gpu_per_image);
+    float optimal_ratio = 0.5f;
+    if (denom > 0.0) {
+        optimal_ratio = (float)(t_cpu_per_image / denom);
+    }
+
+    printf("  Optimal GPU ratio: %.1f%%\n\n", optimal_ratio * 100);
+
+    return optimal_ratio;
+}
+
 int main(int argc, char** argv)
 {
 
@@ -339,7 +474,22 @@ int main(int argc, char** argv)
     printf("Global work size: %zu x %zu\n", global_size[0], global_size[1]);
     printf("Local work size: %zu x %zu\n\n", local_size[0], local_size[1]); 
 
-
+    // ======================== AUTO-CALIBRATION ========================
+        
+    // If in heterogeneous mode and no ratio was provided, auto-calibrate
+    if (mode == 0 && argc <= 2) {
+        printf("No GPU ratio provided. Running auto-calibration...\n\n");
+        gpu_ratio = calibrate_gpu_ratio(
+            q_cpu, q_gpu,
+            kernel_cpu, kernel_gpu,
+            buffer_cpu_input, buffer_cpu_output,
+            buffer_gpu_input, buffer_gpu_output,
+            original_image, image_size,
+            global_size, local_size
+        );
+        printf("Using auto-calibrated GPU ratio: %.1f%%\n\n", gpu_ratio * 100);
+    }
+    
     // ======================== BATCH PROCESSING ========================
 
     printf("Starting batch processing of %d images in %d batches...\n\n", NUM_IMAGES, NUM_BATCHES);
