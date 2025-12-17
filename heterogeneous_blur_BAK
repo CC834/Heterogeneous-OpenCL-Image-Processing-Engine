@@ -39,9 +39,11 @@ int main(int argc, char** argv)
     // Configuration
     int mode = 0;  // Default: heterogeneous
     const char *input_filename = "./image_320x240.jpg";
-    const int NUM_IMAGES = 5000;  // Total number of images in stream
+
+    const int NUM_IMAGES = 5000;  // Number of images in stream
     const int BATCH_SIZE = 500;   // Images per batch
-    const int NUM_BATCHES = (NUM_IMAGES + BATCH_SIZE - 1) / BATCH_SIZE;  // Ceiling division
+    const int NUM_BATCHES = NUM_IMAGES / BATCH_SIZE;  // 10 batches
+
     int local_work_size = 16;
     float gpu_ratio = 0.5f;  // Default: 50% to GPU (used in heterogeneous mode)
     
@@ -80,10 +82,10 @@ int main(int argc, char** argv)
     printf("========== HETEROGENEOUS CONFIGURATION ==========\n");
     printf("Input file: %s\n", input_filename);
     printf("Number of images in stream: %d\n", NUM_IMAGES);
-    printf("Batch size: %d images\n", BATCH_SIZE);
-    printf("Number of batches: %d\n", NUM_BATCHES);
     printf("Work-group size: %dx%d\n", local_work_size, local_work_size);
     printf("Execution mode : %d\n",mode);
+    printf("Batch size: %d images\n", BATCH_SIZE);
+    printf("Number of batches: %d\n", NUM_BATCHES);
     printf("================================================\n\n");
     
 
@@ -122,6 +124,38 @@ int main(int argc, char** argv)
     }
 
     printf("Original image converted to interleaved format\n\n");
+
+
+    // ======================== CREATE IMAGE STREAM ========================
+
+    // printf("Creating image stream (%d images)...\n", NUM_IMAGES);
+
+    // // Allocate array of pointers
+    // unsigned char **image_stream = (unsigned char**)malloc(NUM_IMAGES * sizeof(unsigned char*));
+    // unsigned char **output_stream = (unsigned char**)malloc(NUM_IMAGES * sizeof(unsigned char*));
+
+    // if(!image_stream || !output_stream){printf("Error: Failed to allocate stream arrays\n");return -1;}
+
+    // // Allocate and copy each image
+    // for(int i = 0; i < NUM_IMAGES; i++){
+    //     // Input: copy from original
+    //     image_stream[i] = (unsigned char*)malloc(image_size * sizeof(unsigned char));
+    //     memcpy(image_stream[i], original_image, image_size);
+        
+    //     // Output: just allocate (will be filled by devices)
+    //     output_stream[i] = (unsigned char*)malloc(image_size * sizeof(unsigned char));
+        
+    //     if(!image_stream[i] || !output_stream[i]){
+    //         printf("Error: Failed to allocate image %d\n", i);
+    //         return -1;
+    //     }
+    // }
+
+    // //size_t total_size_mb = (NUM_IMAGES * image_size * 2) / (1024.0 * 1024.0);  // *2 for input+output
+    // double total_size_mb = (double)(NUM_IMAGES * image_size * 2) / (1024.0 * 1024.0);
+    // printf("Image stream created: %d images\n", NUM_IMAGES);
+    // printf("Total memory allocated: %.2f MB\n", total_size_mb);
+    // printf("\n");
 
 
     // ======================== OPENCL DEVICE DISCOVERY ========================
@@ -197,6 +231,12 @@ int main(int argc, char** argv)
 
     cl_command_queue q_gpu = clCreateCommandQueueWithProperties(ctx_gpu, device_gpu, props, &err);
     cl_error(err, "Failed to create GPU queue");
+    
+    //cl_command_queue q_cpu = clCreateCommandQueueWithProperties(ctx_cpu, device_cpu, 0, &err);
+    //cl_error(err, "Failed to create CPU queue");
+
+    //cl_command_queue q_gpu = clCreateCommandQueueWithProperties(ctx_gpu, device_gpu, 0, &err);
+    //cl_error(err, "Failed to create GPU queue");
 
     printf("\n");
 
@@ -275,6 +315,47 @@ int main(int argc, char** argv)
     printf("Kernel objects created\n\n");
 
 
+
+
+    // ======================== WORK DISTRIBUTION ========================
+    // Calculate how many images each device will process based on mode
+    int num_images_cpu = 0;
+    int num_images_gpu = 0;
+
+    if (mode == 0) {
+        // Heterogeneous: split between both devices
+        //num_images_cpu = NUM_IMAGES / 2;
+        //num_images_gpu = NUM_IMAGES - num_images_cpu;  // GPU gets remainder
+        // Heterogeneous: split based on gpu_ratio
+
+        num_images_gpu = (int)(NUM_IMAGES * gpu_ratio);
+        num_images_cpu = NUM_IMAGES - num_images_gpu;
+    } else if (mode == 1) {
+        // CPU only
+        num_images_cpu = NUM_IMAGES;
+        num_images_gpu = 0;
+    } else if (mode == 2) {
+        // GPU only
+        num_images_cpu = 0;
+        num_images_gpu = NUM_IMAGES;
+    }
+    
+    // // Calculate how many images each device will process
+    // int num_images_cpu = NUM_IMAGES / 2;  // Even indices: 0,2,4,...
+    // int num_images_gpu = NUM_IMAGES / 2;  // Odd indices: 1,3,5,...
+
+    // // If NUM_IMAGES is odd, CPU gets the extra one
+    // if(NUM_IMAGES % 2 != 0) {
+    //     num_images_cpu++;
+    // }
+
+    printf("Work distribution:\n");
+    //printf("  CPU will process %d images (indices: 0,2,4,...)\n", num_images_cpu);
+    //printf("  GPU will process %d images (indices: 1,3,5,...)\n", num_images_gpu);
+    printf("  CPU will process %d images (indices: 0 to %d)\n", num_images_cpu, num_images_cpu - 1);
+    printf("  GPU will process %d images (indices: %d to %d)\n", num_images_gpu, num_images_cpu, NUM_IMAGES - 1);
+    printf("Total images: %d\n\n", num_images_cpu + num_images_gpu);
+    
     // ======================== DEVICE BUFFER ALLOCATION ========================
 
     printf("Allocating device buffers...\n");
@@ -338,209 +419,162 @@ int main(int argc, char** argv)
 
     printf("Global work size: %zu x %zu\n", global_size[0], global_size[1]);
     printf("Local work size: %zu x %zu\n\n", local_size[0], local_size[1]); 
+    
+    
+    // ======================== CONCURRENT PROCESSING ========================
 
+    printf("Starting concurrent processing of %d images...\n", NUM_IMAGES);
+    printf("Press Ctrl+C if this takes too long (we can optimize later)\n\n");
 
-    // ======================== BATCH PROCESSING ========================
-
-    printf("Starting batch processing of %d images in %d batches...\n\n", NUM_IMAGES, NUM_BATCHES);
-
-    // Total timing variables (accumulated across all batches)
+    // Timing variables
     double time_cpu_transfer_in = 0, time_cpu_kernel = 0, time_cpu_transfer_out = 0;
     double time_gpu_transfer_in = 0, time_gpu_kernel = 0, time_gpu_transfer_out = 0;
-    int total_images_cpu = 0, total_images_gpu = 0;
 
-    double time_start_total = get_time_ms();
+    double time_start_processing = get_time_ms();
 
-    // ======================== BATCH LOOP ========================
-    for (int batch = 0; batch < NUM_BATCHES; batch++) {
+    // Arrays to store events for all operations
+    cl_event *cpu_events = (cl_event*)malloc(num_images_cpu * 3 * sizeof(cl_event)); // 3 events per image (write, kernel, read)
+    cl_event *gpu_events = (cl_event*)malloc(num_images_gpu * 3 * sizeof(cl_event));
+
+    int cpu_event_idx = 0;
+    int gpu_event_idx = 0;
+
+    // Launch ALL work asynchronously (non-blocking)
+    for(int img_idx = 0; img_idx < NUM_IMAGES; img_idx++) {
         
-        printf("=== Processing Batch %d/%d ===\n", batch + 1, NUM_BATCHES);
-
-        // Calculate actual batch size (handles leftover images in last batch)
-        int batch_start = batch * BATCH_SIZE;
-        int batch_count = BATCH_SIZE;
-        if (batch_start + batch_count > NUM_IMAGES) {
-            batch_count = NUM_IMAGES - batch_start;
+        if(img_idx % 500 == 0) {
+            printf("Launching image %d/%d...\n", img_idx, NUM_IMAGES);
         }
+        
+        // Decide which device processes this image
+        int use_cpu = 0;
 
-        // ======================== CREATE BATCH IMAGE STREAM (CONTIGUOUS) ========================
-
-        unsigned char *batch_input = (unsigned char*)malloc(batch_count * image_size);
-        unsigned char *batch_output = (unsigned char*)malloc(batch_count * image_size);
-
-        if(!batch_input || !batch_output){
-            printf("Error: Failed to allocate batch memory\n");
-            return -1;
-        }
-
-        // Copy original image to each slot in contiguous buffer
-        for(int i = 0; i < batch_count; i++){
-            memcpy(batch_input + i * image_size, original_image, image_size);
-        }
-
-        // ======================== WORK DISTRIBUTION FOR THIS BATCH ========================
-
-        int num_images_cpu = 0;
-        int num_images_gpu = 0;
-
-        if (mode == 0) {
-            num_images_gpu = (int)(batch_count * gpu_ratio);
-            num_images_cpu = batch_count - num_images_gpu;
-        } else if (mode == 1) {
-            num_images_cpu = batch_count;
-            num_images_gpu = 0;
+        if (mode == 1) {
+            // CPU only mode
+            use_cpu = 1;
         } else if (mode == 2) {
-            num_images_cpu = 0;
-            num_images_gpu = batch_count;
+            // GPU only mode
+            use_cpu = 0;
+        } else {
+            // Heterogeneous mode: first num_images_cpu go to CPU, rest to GPU
+            use_cpu = (img_idx < num_images_cpu);
         }
-
-        total_images_cpu += num_images_cpu;
-        total_images_gpu += num_images_gpu;
-
-        printf("  Batch work distribution: CPU=%d, GPU=%d\n", num_images_cpu, num_images_gpu);
-
-        // ======================== CONCURRENT PROCESSING ========================
-
-        // Arrays to store events for this batch
-        cl_event *cpu_events = NULL;
-        cl_event *gpu_events = NULL;
         
-        if (num_images_cpu > 0) {
-            cpu_events = (cl_event*)malloc(num_images_cpu * 3 * sizeof(cl_event));
-        }
-        if (num_images_gpu > 0) {
-            gpu_events = (cl_event*)malloc(num_images_gpu * 3 * sizeof(cl_event));
-        }
-
-        int cpu_event_idx = 0;
-        int gpu_event_idx = 0;
-
-        // Launch ALL work asynchronously (non-blocking)
-        for(int img_idx = 0; img_idx < batch_count; img_idx++) {
+        if (use_cpu) {
+            // ============ CPU processes this image ============
             
-            // Pointer to this image in contiguous buffer
-            unsigned char *in_ptr = batch_input + img_idx * image_size;
-            unsigned char *out_ptr = batch_output + img_idx * image_size;
+            // Transfer input to CPU (NON-BLOCKING!)
+            err = clEnqueueWriteBuffer(q_cpu, buffer_cpu_input, CL_FALSE, 0,
+                                      image_size, image_stream[img_idx],
+                                      0, NULL, &cpu_events[cpu_event_idx++]);
+            cl_error(err, "CPU write failed");
             
-            // Decide which device processes this image
-            int use_cpu = 0;
-
-            if (mode == 1) {
-                use_cpu = 1;
-            } else if (mode == 2) {
-                use_cpu = 0;
-            } else {
-                use_cpu = (img_idx < num_images_cpu);
-            }
+            // Launch kernel on CPU (NON-BLOCKING!)
+            err = clEnqueueNDRangeKernel(q_cpu, kernel_cpu, 2, NULL,
+                                        global_size, local_size,
+                                        0, NULL, &cpu_events[cpu_event_idx++]);
+            cl_error(err, "CPU kernel launch failed");
             
-            if (use_cpu) {
-                // ============ CPU processes this image ============
-                
-                err = clEnqueueWriteBuffer(q_cpu, buffer_cpu_input, CL_FALSE, 0,
-                                          image_size, in_ptr,
-                                          0, NULL, &cpu_events[cpu_event_idx++]);
-                cl_error(err, "CPU write failed");
-                
-                err = clEnqueueNDRangeKernel(q_cpu, kernel_cpu, 2, NULL,
-                                            global_size, local_size,
-                                            0, NULL, &cpu_events[cpu_event_idx++]);
-                cl_error(err, "CPU kernel launch failed");
-                
-                err = clEnqueueReadBuffer(q_cpu, buffer_cpu_output, CL_FALSE, 0,
-                                          image_size, out_ptr,
-                                          0, NULL, &cpu_events[cpu_event_idx++]);
-                cl_error(err, "CPU read failed");
-                
-            } else {
-                // ============ GPU processes this image ============
-                
-                err = clEnqueueWriteBuffer(q_gpu, buffer_gpu_input, CL_FALSE, 0,
-                                          image_size, in_ptr,
-                                          0, NULL, &gpu_events[gpu_event_idx++]);
-                cl_error(err, "GPU write failed");
-                
-                err = clEnqueueNDRangeKernel(q_gpu, kernel_gpu, 2, NULL,
-                                            global_size, local_size,
-                                            0, NULL, &gpu_events[gpu_event_idx++]);
-                cl_error(err, "GPU kernel launch failed");
-                
-                err = clEnqueueReadBuffer(q_gpu, buffer_gpu_output, CL_FALSE, 0,
-                                          image_size, out_ptr,
-                                          0, NULL, &gpu_events[gpu_event_idx++]);
-                cl_error(err, "GPU read failed");
-            }
+            // Read result from CPU (NON-BLOCKING!)
+            err = clEnqueueReadBuffer(q_cpu, buffer_cpu_output, CL_FALSE, 0,
+                                      image_size, output_stream[img_idx],
+                                      0, NULL, &cpu_events[cpu_event_idx++]);
+            cl_error(err, "CPU read failed");
+            
+        } else {
+            // ============ GPU processes this image ============
+            
+            // Transfer input to GPU (NON-BLOCKING!)
+            err = clEnqueueWriteBuffer(q_gpu, buffer_gpu_input, CL_FALSE, 0,
+                                      image_size, image_stream[img_idx],
+                                      0, NULL, &gpu_events[gpu_event_idx++]);
+            cl_error(err, "GPU write failed");
+            
+            // Launch kernel on GPU (NON-BLOCKING!)
+            err = clEnqueueNDRangeKernel(q_gpu, kernel_gpu, 2, NULL,
+                                        global_size, local_size,
+                                        0, NULL, &gpu_events[gpu_event_idx++]);
+            cl_error(err, "GPU kernel launch failed");
+            
+            // Read result from GPU (NON-BLOCKING!)
+            err = clEnqueueReadBuffer(q_gpu, buffer_gpu_output, CL_FALSE, 0,
+                                      image_size, output_stream[img_idx],
+                                      0, NULL, &gpu_events[gpu_event_idx++]);
+            cl_error(err, "GPU read failed");
         }
+}
 
-        // Wait for this batch to complete
-        if (num_images_cpu > 0) clFinish(q_cpu);
-        if (num_images_gpu > 0) clFinish(q_gpu);
+    printf("All work queued! Waiting for completion...\n");
 
-        // ======================== COLLECT TIMING FROM EVENTS ========================
+    // NOW wait for both devices to finish ALL their work
+    if (num_images_cpu > 0) clFinish(q_cpu);
+    if (num_images_gpu > 0) clFinish(q_gpu);
 
-        // Process CPU events
-        if (num_images_cpu > 0) {
-            for(int i = 0; i < cpu_event_idx; i += 3) {
-                cl_ulong t_start, t_end;
-                
-                clGetEventProfilingInfo(cpu_events[i], CL_PROFILING_COMMAND_START, sizeof(t_start), &t_start, NULL);
-                clGetEventProfilingInfo(cpu_events[i], CL_PROFILING_COMMAND_END, sizeof(t_end), &t_end, NULL);
-                time_cpu_transfer_in += (t_end - t_start) / 1000000.0;
-                
-                clGetEventProfilingInfo(cpu_events[i+1], CL_PROFILING_COMMAND_START, sizeof(t_start), &t_start, NULL);
-                clGetEventProfilingInfo(cpu_events[i+1], CL_PROFILING_COMMAND_END, sizeof(t_end), &t_end, NULL);
-                time_cpu_kernel += (t_end - t_start) / 1000000.0;
-                
-                clGetEventProfilingInfo(cpu_events[i+2], CL_PROFILING_COMMAND_START, sizeof(t_start), &t_start, NULL);
-                clGetEventProfilingInfo(cpu_events[i+2], CL_PROFILING_COMMAND_END, sizeof(t_end), &t_end, NULL);
-                time_cpu_transfer_out += (t_end - t_start) / 1000000.0;
-            }
-        }
+    double time_end_processing = get_time_ms();
+    double time_total_processing = time_end_processing - time_start_processing;
 
-        // Process GPU events
-        if (num_images_gpu > 0) {
-            for(int i = 0; i < gpu_event_idx; i += 3) {
-                cl_ulong t_start, t_end;
-                
-                clGetEventProfilingInfo(gpu_events[i], CL_PROFILING_COMMAND_START, sizeof(t_start), &t_start, NULL);
-                clGetEventProfilingInfo(gpu_events[i], CL_PROFILING_COMMAND_END, sizeof(t_end), &t_end, NULL);
-                time_gpu_transfer_in += (t_end - t_start) / 1000000.0;
-                
-                clGetEventProfilingInfo(gpu_events[i+1], CL_PROFILING_COMMAND_START, sizeof(t_start), &t_start, NULL);
-                clGetEventProfilingInfo(gpu_events[i+1], CL_PROFILING_COMMAND_END, sizeof(t_end), &t_end, NULL);
-                time_gpu_kernel += (t_end - t_start) / 1000000.0;
-                
-                clGetEventProfilingInfo(gpu_events[i+2], CL_PROFILING_COMMAND_START, sizeof(t_start), &t_start, NULL);
-                clGetEventProfilingInfo(gpu_events[i+2], CL_PROFILING_COMMAND_END, sizeof(t_end), &t_end, NULL);
-                time_gpu_transfer_out += (t_end - t_start) / 1000000.0;
-            }
-        }
+    printf("All devices finished!\n\n");
 
-        // Cleanup events for this batch
-        if (num_images_cpu > 0) {
-            for(int i = 0; i < cpu_event_idx; i++) {
-                clReleaseEvent(cpu_events[i]);
-            }
-            free(cpu_events);
-        }
-        if (num_images_gpu > 0) {
-            for(int i = 0; i < gpu_event_idx; i++) {
-                clReleaseEvent(gpu_events[i]);
-            }
-            free(gpu_events);
-        }
+    // ======================== COLLECT TIMING FROM EVENTS ========================
 
-        // Free batch memory (just 2 frees now!)
-        free(batch_input);
-        free(batch_output);
+    printf("Collecting timing data...\n");
 
-        printf("  Batch %d complete.\n\n", batch + 1);
+    // Process CPU events
+    if (num_images_cpu > 0) {
+    for(int i = 0; i < cpu_event_idx; i += 3) {
+        cl_ulong t_start, t_end;
+        
+        // Write event
+        clGetEventProfilingInfo(cpu_events[i], CL_PROFILING_COMMAND_START, sizeof(t_start), &t_start, NULL);
+        clGetEventProfilingInfo(cpu_events[i], CL_PROFILING_COMMAND_END, sizeof(t_end), &t_end, NULL);
+        time_cpu_transfer_in += (t_end - t_start) / 1000000.0;
+        
+        // Kernel event
+        clGetEventProfilingInfo(cpu_events[i+1], CL_PROFILING_COMMAND_START, sizeof(t_start), &t_start, NULL);
+        clGetEventProfilingInfo(cpu_events[i+1], CL_PROFILING_COMMAND_END, sizeof(t_end), &t_end, NULL);
+        time_cpu_kernel += (t_end - t_start) / 1000000.0;
+        
+        // Read event
+        clGetEventProfilingInfo(cpu_events[i+2], CL_PROFILING_COMMAND_START, sizeof(t_start), &t_start, NULL);
+        clGetEventProfilingInfo(cpu_events[i+2], CL_PROFILING_COMMAND_END, sizeof(t_end), &t_end, NULL);
+        time_cpu_transfer_out += (t_end - t_start) / 1000000.0;
     }
-    // ======================== END BATCH LOOP ========================
+    }
 
-    double time_end_total = get_time_ms();
-    double time_total_processing = time_end_total - time_start_total;
+    // Process GPU events
+    if (num_images_gpu > 0) {
+    for(int i = 0; i < gpu_event_idx; i += 3) {
+        cl_ulong t_start, t_end;
+        
+        // Write event
+        clGetEventProfilingInfo(gpu_events[i], CL_PROFILING_COMMAND_START, sizeof(t_start), &t_start, NULL);
+        clGetEventProfilingInfo(gpu_events[i], CL_PROFILING_COMMAND_END, sizeof(t_end), &t_end, NULL);
+        time_gpu_transfer_in += (t_end - t_start) / 1000000.0;
+        
+        // Kernel event
+        clGetEventProfilingInfo(gpu_events[i+1], CL_PROFILING_COMMAND_START, sizeof(t_start), &t_start, NULL);
+        clGetEventProfilingInfo(gpu_events[i+1], CL_PROFILING_COMMAND_END, sizeof(t_end), &t_end, NULL);
+        time_gpu_kernel += (t_end - t_start) / 1000000.0;
+        
+        // Read event
+        clGetEventProfilingInfo(gpu_events[i+2], CL_PROFILING_COMMAND_START, sizeof(t_start), &t_start, NULL);
+        clGetEventProfilingInfo(gpu_events[i+2], CL_PROFILING_COMMAND_END, sizeof(t_end), &t_end, NULL);
+        time_gpu_transfer_out += (t_end - t_start) / 1000000.0;
+    }
+    }
 
-    printf("All batches finished!\n\n");
+    // Cleanup events
+    for(int i = 0; i < cpu_event_idx; i++) {
+        clReleaseEvent(cpu_events[i]);
+    }
+    for(int i = 0; i < gpu_event_idx; i++) {
+        clReleaseEvent(gpu_events[i]);
+    }
+
+    free(cpu_events);
+    free(gpu_events);
+
+    printf("Timing data collected!\n\n");
 
 
     // ======================== PERFORMANCE ANALYSIS ========================
@@ -551,88 +585,86 @@ int main(int argc, char** argv)
     printf("1. OVERALL EXECUTION TIME\n");
     printf("   Total wall-clock time: %.2f ms (%.2f seconds)\n", 
           time_total_processing, time_total_processing/1000.0);
-    printf("   Total images processed: %d\n", NUM_IMAGES);
     printf("\n");
 
     // CPU breakdown
-    double time_cpu_total = 0;
-    if (total_images_cpu > 0) {
-        time_cpu_total = time_cpu_transfer_in + time_cpu_kernel + time_cpu_transfer_out;
-        printf("2. CPU DEVICE (processed %d images)\n", total_images_cpu);
-        printf("   Total CPU time:        %.2f ms\n", time_cpu_total);
-        printf("   - Transfer IN:         %.2f ms (%.1f%%)\n", 
-              time_cpu_transfer_in, (time_cpu_transfer_in/time_cpu_total)*100);
-        printf("   - Kernel execution:    %.2f ms (%.1f%%)\n", 
-              time_cpu_kernel, (time_cpu_kernel/time_cpu_total)*100);
-        printf("   - Transfer OUT:        %.2f ms (%.1f%%)\n", 
-              time_cpu_transfer_out, (time_cpu_transfer_out/time_cpu_total)*100);
-        printf("   Average per image:     %.2f ms\n", time_cpu_total / total_images_cpu);
-        printf("\n");
+    double time_cpu_total;
+    if (num_images_cpu > 0) {
+    double time_cpu_total = time_cpu_transfer_in + time_cpu_kernel + time_cpu_transfer_out;
+    printf("2. CPU DEVICE (processed %d images)\n", num_images_cpu);
+    printf("   Total CPU time:        %.2f ms\n", time_cpu_total);
+    printf("   - Transfer IN:         %.2f ms (%.1f%%)\n", 
+          time_cpu_transfer_in, (time_cpu_transfer_in/time_cpu_total)*100);
+    printf("   - Kernel execution:    %.2f ms (%.1f%%)\n", 
+          time_cpu_kernel, (time_cpu_kernel/time_cpu_total)*100);
+    printf("   - Transfer OUT:        %.2f ms (%.1f%%)\n", 
+          time_cpu_transfer_out, (time_cpu_transfer_out/time_cpu_total)*100);
+    printf("   Average per image:     %.2f ms\n", time_cpu_total / num_images_cpu);
+    printf("\n");
     }
 
     // GPU breakdown
-    double time_gpu_total = 0;
-    if (total_images_gpu > 0) {
-        time_gpu_total = time_gpu_transfer_in + time_gpu_kernel + time_gpu_transfer_out;
-        printf("3. GPU DEVICE (processed %d images)\n", total_images_gpu);
-        printf("   Total GPU time:        %.2f ms\n", time_gpu_total);
-        printf("   - Transfer IN:         %.2f ms (%.1f%%)\n", 
-              time_gpu_transfer_in, (time_gpu_transfer_in/time_gpu_total)*100);
-        printf("   - Kernel execution:    %.2f ms (%.1f%%)\n", 
-              time_gpu_kernel, (time_gpu_kernel/time_gpu_total)*100);
-        printf("   - Transfer OUT:        %.2f ms (%.1f%%)\n", 
-              time_gpu_transfer_out, (time_gpu_transfer_out/time_gpu_total)*100);
-        printf("   Average per image:     %.2f ms\n", time_gpu_total / total_images_gpu);
-        printf("\n");
+    double time_gpu_total;
+    if (num_images_gpu > 0) {
+    double time_gpu_total = time_gpu_transfer_in + time_gpu_kernel + time_gpu_transfer_out;
+    printf("3. GPU DEVICE (processed %d images)\n", num_images_gpu);
+    printf("   Total GPU time:        %.2f ms\n", time_gpu_total);
+    printf("   - Transfer IN:         %.2f ms (%.1f%%)\n", 
+          time_gpu_transfer_in, (time_gpu_transfer_in/time_gpu_total)*100);
+    printf("   - Kernel execution:    %.2f ms (%.1f%%)\n", 
+          time_gpu_kernel, (time_gpu_kernel/time_gpu_total)*100);
+    printf("   - Transfer OUT:        %.2f ms (%.1f%%)\n", 
+          time_gpu_transfer_out, (time_gpu_transfer_out/time_gpu_total)*100);
+    printf("   Average per image:     %.2f ms\n", time_gpu_total / num_images_gpu);
+    printf("\n");
+    }
+    printf("====================");
+
+    if (num_images_cpu > 0 && num_images_gpu > 0) {
+    // Device comparison
+    printf("4. DEVICE COMPARISON\n");
+    double speedup_factor = time_cpu_total / time_gpu_total;
+    if(speedup_factor > 1.0) {
+        printf("   GPU is %.2fx FASTER than CPU\n", speedup_factor);
+    } else {
+        printf("   CPU is %.2fx FASTER than GPU\n", 1.0/speedup_factor);
+    }
+    printf("   CPU/GPU time ratio: %.2f\n", speedup_factor);
+    printf("\n");
+
+    // Workload balance
+    printf("5. WORKLOAD BALANCE\n");
+    double imbalance = fabs(time_cpu_total - time_gpu_total) / 
+                      fmax(time_cpu_total, time_gpu_total) * 100.0;
+    printf("   Workload imbalance: %.1f%%\n", imbalance);
+    if(time_cpu_total > time_gpu_total) {
+        printf("   CPU is the BOTTLENECK (%.2f ms slower)\n", 
+              time_cpu_total - time_gpu_total);
+    } else {
+        printf("   GPU is the BOTTLENECK (%.2f ms slower)\n", 
+              time_gpu_total - time_cpu_total);
+    }
+    printf("\n");
+
+    // Bottleneck identification per device
+    printf("6. BOTTLENECK IDENTIFICATION\n");
+    printf("   CPU bottleneck: ");
+    if(time_cpu_transfer_in + time_cpu_transfer_out > time_cpu_kernel) {
+        printf("COMMUNICATION (%.1f%% of time)\n", 
+              ((time_cpu_transfer_in + time_cpu_transfer_out)/time_cpu_total)*100);
+    } else {
+        printf("COMPUTATION (%.1f%% of time)\n", 
+              (time_cpu_kernel/time_cpu_total)*100);
     }
 
-    printf("====================\n");
-
-    if (total_images_cpu > 0 && total_images_gpu > 0) {
-        // Device comparison
-        printf("4. DEVICE COMPARISON\n");
-        double speedup_factor = time_cpu_total / time_gpu_total;
-        if(speedup_factor > 1.0) {
-            printf("   GPU is %.2fx FASTER than CPU\n", speedup_factor);
-        } else {
-            printf("   CPU is %.2fx FASTER than GPU\n", 1.0/speedup_factor);
-        }
-        printf("   CPU/GPU time ratio: %.2f\n", speedup_factor);
-        printf("\n");
-
-        // Workload balance
-        printf("5. WORKLOAD BALANCE\n");
-        double imbalance = fabs(time_cpu_total - time_gpu_total) / 
-                          fmax(time_cpu_total, time_gpu_total) * 100.0;
-        printf("   Workload imbalance: %.1f%%\n", imbalance);
-        if(time_cpu_total > time_gpu_total) {
-            printf("   CPU is the BOTTLENECK (%.2f ms slower)\n", 
-                  time_cpu_total - time_gpu_total);
-        } else {
-            printf("   GPU is the BOTTLENECK (%.2f ms slower)\n", 
-                  time_gpu_total - time_cpu_total);
-        }
-        printf("\n");
-
-        // Bottleneck identification per device
-        printf("6. BOTTLENECK IDENTIFICATION\n");
-        printf("   CPU bottleneck: ");
-        if(time_cpu_transfer_in + time_cpu_transfer_out > time_cpu_kernel) {
-            printf("COMMUNICATION (%.1f%% of time)\n", 
-                  ((time_cpu_transfer_in + time_cpu_transfer_out)/time_cpu_total)*100);
-        } else {
-            printf("COMPUTATION (%.1f%% of time)\n", 
-                  (time_cpu_kernel/time_cpu_total)*100);
-        }
-
-        printf("   GPU bottleneck: ");
-        if(time_gpu_transfer_in + time_gpu_transfer_out > time_gpu_kernel) {
-            printf("COMMUNICATION (%.1f%% of time)\n", 
-                  ((time_gpu_transfer_in + time_gpu_transfer_out)/time_gpu_total)*100);
-        } else {
-            printf("COMPUTATION (%.1f%% of time)\n", 
-                  (time_gpu_kernel/time_gpu_total)*100);
-        }
+    printf("   GPU bottleneck: ");
+    if(time_gpu_transfer_in + time_gpu_transfer_out > time_gpu_kernel) {
+        printf("COMMUNICATION (%.1f%% of time)\n", 
+              ((time_gpu_transfer_in + time_gpu_transfer_out)/time_gpu_total)*100);
+    } else {
+        printf("COMPUTATION (%.1f%% of time)\n", 
+              (time_gpu_kernel/time_gpu_total)*100);
+    }
     }
     printf("\n");
 
@@ -646,8 +678,9 @@ int main(int argc, char** argv)
     printf("\n");
 
     printf("=========================================\n\n");
-
     // ======================== CLEANUP ========================
+
+    //printf("Cleaning up resources...\n");
 
     // Release OpenCL buffers
     clReleaseMemObject(buffer_cpu_input);
@@ -674,5 +707,14 @@ int main(int argc, char** argv)
     // Free host memory
     free(original_image);
 
+    for (int i = 0; i < NUM_IMAGES; i++) {
+        free(image_stream[i]);
+        free(output_stream[i]);
+    }
+
+    free(image_stream);
+    free(output_stream);
+
+    //printf("Cleanup complete!\n");
     return 0;
 }
