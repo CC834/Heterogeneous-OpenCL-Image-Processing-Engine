@@ -217,60 +217,99 @@ int main(int argc, char** argv)
     rewind(fp);
 
     char *source_code = (char*)malloc(source_size + 1);
+    if(!source_code){
+        printf("Error: Failed to allocate kernel source buffer\n");
+        fclose(fp);
+        return -1;
+    }
     source_code[source_size] = '\0';
-    fread(source_code, 1, source_size, fp);
+
+    size_t read_bytes = fread(source_code, 1, source_size, fp);
     fclose(fp);
+
+    if(read_bytes != source_size){
+        printf("Warning: fread read %zu/%zu bytes\n", read_bytes, source_size);
+    }
 
     printf("Kernel source loaded (%zu bytes)\n", source_size);
 
-    // Build program for CPU
-    printf("Building kernel for CPU...\n");
-    cl_program program_cpu = clCreateProgramWithSource(ctx_cpu, 1, 
-                            (const char**)&source_code, &source_size, &err);
-    cl_error(err, "Failed to create CPU program");
+    // Build program(s) depending on mode
+    cl_program program_cpu = NULL;
+    cl_program program_gpu = NULL;
 
-    err = clBuildProgram(program_cpu, 1, &device_cpu, NULL, NULL, NULL);
-    if(err != CL_SUCCESS){
-        size_t log_size;
-        clGetProgramBuildInfo(program_cpu, device_cpu, CL_PROGRAM_BUILD_LOG, 
-                              0, NULL, &log_size);
-        char *log = (char*)malloc(log_size);
-        clGetProgramBuildInfo(program_cpu, device_cpu, CL_PROGRAM_BUILD_LOG, 
-                              log_size, log, NULL);
-        printf("CPU Build Error:\n%s\n", log);
-        free(log);
-        return -1;
+    cl_kernel kernel_cpu = NULL;
+    cl_kernel kernel_gpu = NULL;
+
+    // ---------------- CPU ----------------
+    if (mode != 2) {
+        printf("Building kernel for CPU...\n");
+
+        program_cpu = clCreateProgramWithSource(ctx_cpu, 1,
+                        (const char**)&source_code, &source_size, &err);
+        cl_error(err, "Failed to create CPU program");
+
+        err = clBuildProgram(program_cpu, 1, &device_cpu, NULL, NULL, NULL);
+        if(err != CL_SUCCESS){
+            size_t log_size = 0;
+            clGetProgramBuildInfo(program_cpu, device_cpu, CL_PROGRAM_BUILD_LOG,
+                                  0, NULL, &log_size);
+
+            char *log = (char*)malloc(log_size + 1);
+            if(log){
+                log[log_size] = '\0';
+                clGetProgramBuildInfo(program_cpu, device_cpu, CL_PROGRAM_BUILD_LOG,
+                                      log_size, log, NULL);
+                printf("CPU Build Error:\n%s\n", log);
+                free(log);
+            } else {
+                printf("CPU Build Error (and failed to allocate log)\n");
+            }
+            free(source_code);
+            return -1;
+        }
+
+        printf("CPU kernel built successfully\n");
+
+        kernel_cpu = clCreateKernel(program_cpu, "gaussian_blur", &err);
+        cl_error(err, "Failed to create CPU kernel");
     }
-    printf("CPU kernel built successfully\n");
 
-    // Build program for GPU
-    printf("Building kernel for GPU...\n");
-    cl_program program_gpu = clCreateProgramWithSource(ctx_gpu, 1, 
-                            (const char**)&source_code, &source_size, &err);
-    cl_error(err, "Failed to create GPU program");
+    // ---------------- GPU ----------------
+    if (mode != 1) {
+        printf("Building kernel for GPU...\n");
 
-    err = clBuildProgram(program_gpu, 1, &device_gpu, NULL, NULL, NULL);
-    if(err != CL_SUCCESS){
-        size_t log_size;
-        clGetProgramBuildInfo(program_gpu, device_gpu, CL_PROGRAM_BUILD_LOG, 
-                              0, NULL, &log_size);
-        char *log = (char*)malloc(log_size);
-        clGetProgramBuildInfo(program_gpu, device_gpu, CL_PROGRAM_BUILD_LOG, 
-                              log_size, log, NULL);
-        printf("GPU Build Error:\n%s\n", log);
-        free(log);
-        return -1;
+        program_gpu = clCreateProgramWithSource(ctx_gpu, 1,
+                        (const char**)&source_code, &source_size, &err);
+        cl_error(err, "Failed to create GPU program");
+
+        err = clBuildProgram(program_gpu, 1, &device_gpu, NULL, NULL, NULL);
+        if(err != CL_SUCCESS){
+            size_t log_size = 0;
+            clGetProgramBuildInfo(program_gpu, device_gpu, CL_PROGRAM_BUILD_LOG,
+                                  0, NULL, &log_size);
+
+            char *log = (char*)malloc(log_size + 1);
+            if(log){
+                log[log_size] = '\0';
+                clGetProgramBuildInfo(program_gpu, device_gpu, CL_PROGRAM_BUILD_LOG,
+                                      log_size, log, NULL);
+                printf("GPU Build Error:\n%s\n", log);
+                free(log);
+            } else {
+                printf("GPU Build Error (and failed to allocate log)\n");
+            }
+            free(source_code);
+            return -1;
+        }
+
+        printf("GPU kernel built successfully\n");
+
+        kernel_gpu = clCreateKernel(program_gpu, "gaussian_blur", &err);
+        cl_error(err, "Failed to create GPU kernel");
     }
-    printf("GPU kernel built successfully\n");
 
+    // We can free source now
     free(source_code);
-
-    // Create kernel objects
-    cl_kernel kernel_cpu = clCreateKernel(program_cpu, "gaussian_blur", &err);
-    cl_error(err, "Failed to create CPU kernel");
-
-    cl_kernel kernel_gpu = clCreateKernel(program_gpu, "gaussian_blur", &err);
-    cl_error(err, "Failed to create GPU kernel");
 
     printf("Kernel objects created\n\n");
 
@@ -279,55 +318,66 @@ int main(int argc, char** argv)
 
     printf("Allocating device buffers...\n");
 
-    // CPU buffers (for ONE image at a time)
-    cl_mem buffer_cpu_input = clCreateBuffer(ctx_cpu, CL_MEM_READ_ONLY,
-                                            image_size, NULL, &err);
-    cl_error(err, "Failed to create CPU input buffer");
+    cl_mem buffer_cpu_input  = NULL;
+    cl_mem buffer_cpu_output = NULL;
+    cl_mem buffer_gpu_input  = NULL;
+    cl_mem buffer_gpu_output = NULL;
 
-    cl_mem buffer_cpu_output = clCreateBuffer(ctx_cpu, CL_MEM_WRITE_ONLY,
-                                              image_size, NULL, &err);
-    cl_error(err, "Failed to create CPU output buffer");
+    // CPU buffers (only if CPU is used)
+    if (mode != 2) {
+        buffer_cpu_input = clCreateBuffer(ctx_cpu, CL_MEM_READ_ONLY, image_size, NULL, &err);
+        cl_error(err, "Failed to create CPU input buffer");
 
-    // GPU buffers (for ONE image at a time)
-    cl_mem buffer_gpu_input = clCreateBuffer(ctx_gpu, CL_MEM_READ_ONLY,
-                                            image_size, NULL, &err);
-    cl_error(err, "Failed to create GPU input buffer");
+        buffer_cpu_output = clCreateBuffer(ctx_cpu, CL_MEM_WRITE_ONLY, image_size, NULL, &err);
+        cl_error(err, "Failed to create CPU output buffer");
+    }
 
-    cl_mem buffer_gpu_output = clCreateBuffer(ctx_gpu, CL_MEM_WRITE_ONLY,
-                                              image_size, NULL, &err);
-    cl_error(err, "Failed to create GPU output buffer");
+    // GPU buffers (only if GPU is used)
+    if (mode != 1) {
+        buffer_gpu_input = clCreateBuffer(ctx_gpu, CL_MEM_READ_ONLY, image_size, NULL, &err);
+        cl_error(err, "Failed to create GPU input buffer");
+
+        buffer_gpu_output = clCreateBuffer(ctx_gpu, CL_MEM_WRITE_ONLY, image_size, NULL, &err);
+        cl_error(err, "Failed to create GPU output buffer");
+    }
 
     printf("Device buffers allocated\n\n");
+
 
     // ======================== SET KERNEL ARGUMENTS ========================
 
     printf("Setting kernel arguments...\n");
 
-    // CPU kernel arguments
-    err = clSetKernelArg(kernel_cpu, 0, sizeof(cl_mem), &buffer_cpu_input);
-    cl_error(err, "Failed to set CPU kernel arg 0");
-    err = clSetKernelArg(kernel_cpu, 1, sizeof(cl_mem), &buffer_cpu_output);
-    cl_error(err, "Failed to set CPU kernel arg 1");
-    err = clSetKernelArg(kernel_cpu, 2, sizeof(int), &width);
-    cl_error(err, "Failed to set CPU kernel arg 2");
-    err = clSetKernelArg(kernel_cpu, 3, sizeof(int), &height);
-    cl_error(err, "Failed to set CPU kernel arg 3");
-    err = clSetKernelArg(kernel_cpu, 4, sizeof(int), &channels);
-    cl_error(err, "Failed to set CPU kernel arg 4");
+    // CPU kernel arguments (only if CPU is used)
+    if (mode != 2) {
+        err = clSetKernelArg(kernel_cpu, 0, sizeof(cl_mem), &buffer_cpu_input);
+        cl_error(err, "Failed to set CPU kernel arg 0");
+        err = clSetKernelArg(kernel_cpu, 1, sizeof(cl_mem), &buffer_cpu_output);
+        cl_error(err, "Failed to set CPU kernel arg 1");
+        err = clSetKernelArg(kernel_cpu, 2, sizeof(int), &width);
+        cl_error(err, "Failed to set CPU kernel arg 2");
+        err = clSetKernelArg(kernel_cpu, 3, sizeof(int), &height);
+        cl_error(err, "Failed to set CPU kernel arg 3");
+        err = clSetKernelArg(kernel_cpu, 4, sizeof(int), &channels);
+        cl_error(err, "Failed to set CPU kernel arg 4");
+    }
 
-    // GPU kernel arguments
-    err = clSetKernelArg(kernel_gpu, 0, sizeof(cl_mem), &buffer_gpu_input);
-    cl_error(err, "Failed to set GPU kernel arg 0");
-    err = clSetKernelArg(kernel_gpu, 1, sizeof(cl_mem), &buffer_gpu_output);
-    cl_error(err, "Failed to set GPU kernel arg 1");
-    err = clSetKernelArg(kernel_gpu, 2, sizeof(int), &width);
-    cl_error(err, "Failed to set GPU kernel arg 2");
-    err = clSetKernelArg(kernel_gpu, 3, sizeof(int), &height);
-    cl_error(err, "Failed to set GPU kernel arg 3");
-    err = clSetKernelArg(kernel_gpu, 4, sizeof(int), &channels);
-    cl_error(err, "Failed to set GPU kernel arg 4");
+    // GPU kernel arguments (only if GPU is used)
+    if (mode != 1) {
+        err = clSetKernelArg(kernel_gpu, 0, sizeof(cl_mem), &buffer_gpu_input);
+        cl_error(err, "Failed to set GPU kernel arg 0");
+        err = clSetKernelArg(kernel_gpu, 1, sizeof(cl_mem), &buffer_gpu_output);
+        cl_error(err, "Failed to set GPU kernel arg 1");
+        err = clSetKernelArg(kernel_gpu, 2, sizeof(int), &width);
+        cl_error(err, "Failed to set GPU kernel arg 2");
+        err = clSetKernelArg(kernel_gpu, 3, sizeof(int), &height);
+        cl_error(err, "Failed to set GPU kernel arg 3");
+        err = clSetKernelArg(kernel_gpu, 4, sizeof(int), &channels);
+        cl_error(err, "Failed to set GPU kernel arg 4");
+    }
 
     printf("Kernel arguments set\n\n");
+
 
     // ======================== WORK SIZE CALCULATION ========================
 
@@ -661,19 +711,16 @@ int main(int argc, char** argv)
     }
     // ======================== CLEANUP ========================
 
-    // Release OpenCL buffers
-    clReleaseMemObject(buffer_cpu_input);
-    clReleaseMemObject(buffer_cpu_output);
-    clReleaseMemObject(buffer_gpu_input);
-    clReleaseMemObject(buffer_gpu_output);
+    if (buffer_cpu_input)  clReleaseMemObject(buffer_cpu_input);
+    if (buffer_cpu_output) clReleaseMemObject(buffer_cpu_output);
+    if (buffer_gpu_input)  clReleaseMemObject(buffer_gpu_input);
+    if (buffer_gpu_output) clReleaseMemObject(buffer_gpu_output);
 
-    // Release kernels
-    clReleaseKernel(kernel_cpu);
-    clReleaseKernel(kernel_gpu);
+    if (kernel_cpu) clReleaseKernel(kernel_cpu);
+    if (kernel_gpu) clReleaseKernel(kernel_gpu);
 
-    // Release programs
-    clReleaseProgram(program_cpu);
-    clReleaseProgram(program_gpu);
+    if (program_cpu) clReleaseProgram(program_cpu);
+    if (program_gpu) clReleaseProgram(program_gpu);
 
     // Release command queues
     clReleaseCommandQueue(q_cpu);
