@@ -1,0 +1,61 @@
+==========================================
+Split-Image Optimization Script
+Testing batch sizes: 50 100 250 500 1000
+Runs per config: 3
+Target imbalance: <= 5.0%
+==========================================
+
+============================================
+TESTING BATCH SIZE: 50
+============================================
+  Warm-up run...
+  Calibration iteration 1 (ratio: 0.5)...
+  Calibration iteration 2 (ratio: .548)...
+  Calibration iteration 3 (ratio: .560)...
+  Optimal ratio for batch 50: .574
+
+  Run 1/3... time/img=0.638ms, imbalance=3.0%, total=3187.99ms
+  Run 2/3... time/img=0.798ms, imbalance=19.7%, total=3991.26ms
+  Run 3/3... time/img=0.823ms, imbalance=22.4%, total=4113.97ms
+
+  BATCH 50 RESULTS:
+    Optimal ratio: .574
+    Avg total time: 3764.40ms
+    Avg time/image: .752ms
+    Avg imbalance: 15.0%
+    Valid runs: 3/3
+
+  (Faster but imbalance > 5.0%)
+============================================
+TESTING BATCH SIZE: 100
+============================================
+  Warm-up run...
+  Calibration iteration 1 (ratio: 0.5)...
+  Calibration iteration 2 (ratio: .559)...
+  Calibration iteration 3 (ratio: .586)...
+  Optimal ratio for batch 100: .597
+
+  Run 1/3... time/img=0.718ms, imbalance=2.5%, total=3591.95ms
+  Run 2/3... time/img=0.711ms, imbalance=10.3%, total=3554.33ms
+  Run 3/3... time/img=0.688ms, imbalance=6.8%, total=3441.17ms
+
+  BATCH 100 RESULTS:
+    Optimal ratio: .597
+    Avg total time: 3529.15ms
+    Avg time/image: .705ms
+    Avg imbalance: 6.5%
+    Valid runs: 3/3
+
+  (Faster but imbalance > 5.0%)
+============================================
+TESTING BATCH SIZE: 250
+============================================
+  Warm-up run...
+  Calibration iteration 1 (ratio: 0.5)...
+  Calibration iteration 2 (ratio: .602)...
+  Calibration iteration 3 (ratio: .629)...
+  Optimal ratio for batch 250: .639
+
+  Run 1/3... time/img=0.716ms, imbalance=10.3%, total=3578.77ms
+  Run 2/3... time/img=0.643ms, imbalance=7.5%, total=3216.01ms
+  Run 3/3... 

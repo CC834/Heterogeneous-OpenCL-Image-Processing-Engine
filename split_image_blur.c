@@ -35,14 +35,34 @@ double get_time_ms() {
     return (tv.tv_sec * 1000.0) + (tv.tv_usec / 1000.0);
 }
 
+static void save_one_image_rgb(const char* filename,
+                               const unsigned char* interleaved,
+                               int width, int height, int channels)
+{
+    CImg<unsigned char> out(width, height, 1, channels);
+
+    for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
+            int idx = (y * width + x) * channels;
+            out(x, y, 0, 0) = interleaved[idx + 0];
+            out(x, y, 0, 1) = interleaved[idx + 1];
+            out(x, y, 0, 2) = interleaved[idx + 2];
+        }
+    }
+
+    out.save(filename); // extension decides format (.jpg/.png)
+}
+
+
 int main(int argc, char** argv)
 {
 
     // Configuration
+    const bool SAVE_IMAGE = false;
     const char *input_filename = "./image_320x240.jpg";
     const int NUM_IMAGES = 5000;  // Total number of images in stream
-    const int BATCH_SIZE = 500;   // Images per batch
-    const int NUM_BATCHES = (NUM_IMAGES + BATCH_SIZE - 1) / BATCH_SIZE;  // Ceiling division
+    int BATCH_SIZE = 500;   // Images per batch
+    int NUM_BATCHES = (NUM_IMAGES + BATCH_SIZE - 1) / BATCH_SIZE;  // Ceiling division
     int local_work_size = 16;
     float gpu_ratio = 0.5f;  // Default: 50% to GPU (used in heterogeneous mode)
     const int HALO = 1;  // Overlap rows needed for 3x3 Gaussian kernel
@@ -56,6 +76,17 @@ int main(int argc, char** argv)
             gpu_ratio = 0.5f;
         }
     }
+
+    // Parse batch size (second argument)
+    if (argc > 2) {
+        BATCH_SIZE = atoi(argv[2]);
+        if (BATCH_SIZE < 1 || BATCH_SIZE > NUM_IMAGES) {
+            printf("Warning: BATCH_SIZE must be between 1 and %d. Using 500\n", NUM_IMAGES);
+            BATCH_SIZE = 500;
+        }
+    }
+    // ALWAYS recompute after final BATCH_SIZE is known
+    NUM_BATCHES = (NUM_IMAGES + BATCH_SIZE - 1) / BATCH_SIZE;
 
  
     printf("========== SPLIT-IMAGE CONFIGURATION ==========\n");
@@ -423,7 +454,10 @@ int main(int argc, char** argv)
 
         // Calculate actual batch size (handles leftover images in last batch)
         int batch_start = batch * BATCH_SIZE;
+        if (batch_start >= NUM_IMAGES) break;
         int batch_count = BATCH_SIZE;
+        if (batch_start + batch_count > NUM_IMAGES)
+            batch_count = NUM_IMAGES - batch_start;
         if (batch_start + batch_count > NUM_IMAGES) {
             batch_count = NUM_IMAGES - batch_start;
         }
@@ -508,6 +542,13 @@ int main(int argc, char** argv)
         // Wait for this batch to complete
         clFinish(q_cpu);
         clFinish(q_gpu);
+
+        if (SAVE_IMAGE == TRUE){
+            if (batch == 0) {
+                save_one_image_rgb("split_output.jpg", batch_output, width, height, channels);
+                printf("Saved example output: split_output.jpg\n");
+            }
+        }
 
         // ======================== COLLECT TIMING FROM EVENTS ========================
 
