@@ -1,0 +1,43 @@
+==========================================
+Dynamic Split-Image Optimization Script
+Batch sizes: 50 100 250 500 650 1000
+Runs per measurement: 3
+Imbalance constraint: <= 5.0%
+Ratio clamp: [0.05, 0.95]
+==========================================
+
+============================================
+BATCH SIZE: 50
+============================================
+  Stage 1 (coarse search)...
+    probe ratio=0.050 -> avg_time=5338.57ms, avg_imb=76.60%
+    probe ratio=0.100 -> avg_time=5605.48ms, avg_imb=78.10%
+    probe ratio=0.200 -> avg_time=4533.01ms, avg_imb=71.83%
+    probe ratio=0.300 -> avg_time=5376.53ms, avg_imb=55.60%
+    probe ratio=0.400 -> avg_time=5247.02ms, avg_imb=43.06%
+    probe ratio=0.500 -> avg_time=4105.23ms, avg_imb=29.43%
+    probe ratio=0.600 -> avg_time=5144.87ms, avg_imb=3.20%
+    probe ratio=0.700 -> avg_time=4126.57ms, avg_imb=28.26%
+    probe ratio=0.800 -> avg_time=3432.77ms, avg_imb=50.10%
+    probe ratio=0.900 -> avg_time=4233.74ms, avg_imb=68.56%
+    probe ratio=0.950 -> avg_time=3119.47ms, avg_imb=79.70%
+  -> best coarse ratio=probe time=ratio=0.050ms imb=-> avg_time=5338.57ms, avg_imb=76.60%%
+
+  Stage 2 (fine search around probe)...
+    probe ratio=0.050 -> avg_time=5174.17ms, avg_imb=73.46%
+    probe ratio=0.050 -> avg_time=5873.61ms, avg_imb=69.80%
+    probe ratio=0.050 -> avg_time=5211.13ms, avg_imb=72.70%
+    probe ratio=0.050 -> avg_time=6064.49ms, avg_imb=72.46%
+    probe ratio=0.050 -> avg_time=5855.37ms, avg_imb=68.03%
+    probe ratio=0.050 -> avg_time=4881.75ms, avg_imb=77.43%
+    probe ratio=0.050 -> avg_time=4422.57ms, avg_imb=76.76%
+    probe ratio=0.060 -> avg_time=4342.29ms, avg_imb=76.16%
+    probe ratio=0.080 -> avg_time=4024.87ms, avg_imb=75.23%
+  -> best fine ratio=probe time=ratio=0.050ms imb=-> avg_time=5174.17ms, avg_imb=73.46%%
+
+  Stage 3 (micro search around probe)...
+    probe ratio=0.050 -> avg_time=4528.16ms, avg_imb=75.93%
+    probe ratio=0.050 -> avg_time=4279.41ms, avg_imb=76.70%
+    probe ratio=0.050 -> avg_time=4104.91ms, avg_imb=77.86%
+    probe ratio=0.050 -> avg_time=4531.52ms, avg_imb=75.83%
+    probe ratio=0.050 -> avg_time=4574.40ms, avg_imb=76.03%

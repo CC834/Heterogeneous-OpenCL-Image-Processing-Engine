@@ -1,0 +1,116 @@
+========== SPLIT-IMAGE CONFIGURATION ==========
+Input file: ./image_320x240.jpg
+Number of images in stream: 5000
+Batch size: 1000 images
+Number of batches: 5
+Work-group size: 16x16
+GPU ratio: 76.2% (rows to GPU)
+Halo size: 1 row(s)
+================================================
+
+Original image loaded: 320x240, 3 channels
+Size of one image: 230400 bytes (225.00 KB)
+Original image converted to interleaved format
+
+Split configuration:
+  Split row: 57 (CPU: rows 0-56, GPU: rows 57-239)
+  CPU: 58 input rows (inc. halo), 57 output rows
+  GPU: 184 input rows (inc. halo), 183 output rows
+  CPU input size: 54.38 KB, output size: 53.44 KB
+  GPU input size: 172.50 KB, output size: 171.56 KB
+
+Platform 0: rusticl
+Platform 1: Portable Computing Language
+CPU device: cpu-skylake-avx512-AMD Ryzen AI 7 350 w/ Radeon 860M
+GPU device: AMD Radeon 860M Graphics (radeonsi, gfx1152, LLVM 20.1.8, DRM 3.64, 6.16.12-200.fc42.x86_64)
+
+Loading kernel source...
+Kernel source loaded (2054 bytes)
+Building kernel for CPU...
+CPU kernel built successfully
+Building kernel for GPU...
+GPU kernel built successfully
+Kernel objects created
+
+Allocating device buffers...
+Device buffers allocated
+
+Setting kernel arguments...
+Kernel arguments set
+
+CPU global size: 320 x 64
+GPU global size: 320 x 192
+Local size: 16 x 16
+
+Starting batch processing of 5000 images in 5 batches...
+
+=== Processing Batch 1/5 ===
+  Processing 1000 images (each split between CPU and GPU)
+  Batch 1 complete.
+
+=== Processing Batch 2/5 ===
+  Processing 1000 images (each split between CPU and GPU)
+  Batch 2 complete.
+
+=== Processing Batch 3/5 ===
+  Processing 1000 images (each split between CPU and GPU)
+  Batch 3 complete.
+
+=== Processing Batch 4/5 ===
+  Processing 1000 images (each split between CPU and GPU)
+  Batch 4 complete.
+
+=== Processing Batch 5/5 ===
+  Processing 1000 images (each split between CPU and GPU)
+  Batch 5 complete.
+
+All batches finished!
+
+========== PERFORMANCE RESULTS ==========
+
+1. OVERALL EXECUTION TIME
+   Total wall-clock time: 2665.28 ms (2.67 seconds)
+   Total images processed: 5000
+
+2. CPU DEVICE (processed 5000 images - top 57 rows each)
+   Total CPU time:        730.89 ms
+   - Transfer IN:         20.28 ms (2.8%)
+   - Kernel execution:    621.56 ms (85.0%)
+   - Transfer OUT:        89.05 ms (12.2%)
+
+3. GPU DEVICE (processed 5000 images - bottom 183 rows each)
+   Total GPU time:        758.86 ms
+   - Transfer IN:         8.24 ms (1.1%)
+   - Kernel execution:    251.38 ms (33.1%)
+   - Transfer OUT:        499.24 ms (65.8%)
+
+============================
+4. DEVICE COMPARISON
+   CPU is 1.04x FASTER than GPU
+   CPU/GPU time ratio: 0.96
+
+5. WORKLOAD BALANCE
+   Workload imbalance: 3.7%
+   GPU is the BOTTLENECK (27.97 ms slower)
+
+6. BOTTLENECK IDENTIFICATION
+   CPU bottleneck: COMPUTATION (85.0% of time)
+   GPU bottleneck: COMMUNICATION (66.9% of time)
+
+7. THROUGHPUT
+   Overall throughput: 144.08 Megapixels/sec
+   Images per second: 1875.98
+
+=========================================
+
+8. SPLIT-IMAGE STATISTICS
+   CPU time per image: 0.146 ms (for 57 rows)
+   GPU time per image: 0.152 ms (for 183 rows)
+   Combined time per image: 0.533 ms
+   Current GPU ratio: 76.2%
+
+9. OPTIMAL RATIO RECOMMENDATION
+   CPU: 0.00256 ms/row
+   GPU: 0.00083 ms/row
+   Recommended GPU ratio: 75.6%
+   Run with: ./split_image_blur 0.756
