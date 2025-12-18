@@ -40,8 +40,8 @@ int main(int argc, char** argv)
     int mode = 0;  // Default: heterogeneous
     const char *input_filename = "./image_320x240.jpg";
     const int NUM_IMAGES = 5000;  // Total number of images in stream
-    const int BATCH_SIZE = 500;   // Images per batch
-    const int NUM_BATCHES = (NUM_IMAGES + BATCH_SIZE - 1) / BATCH_SIZE;  // Ceiling division
+     int BATCH_SIZE = 500;   // Images per batch
+     int NUM_BATCHES = (NUM_IMAGES + BATCH_SIZE - 1) / BATCH_SIZE;  // Ceiling division
     int local_work_size = 16;
     float gpu_ratio = 0.5f;  // Default: 50% to GPU (used in heterogeneous mode)
     
@@ -72,6 +72,17 @@ int main(int argc, char** argv)
             gpu_ratio = 0.5f;
         }
     }
+    // Parse batch size (second argument)
+    if (argc > 3) {
+        BATCH_SIZE = atoi(argv[3]);
+        if (BATCH_SIZE < 1 || BATCH_SIZE > NUM_IMAGES) {
+            printf("Warning: BATCH_SIZE must be between 1 and %d. Using 500\n", NUM_IMAGES);
+            BATCH_SIZE = 500;
+        }
+    }
+    // ALWAYS recompute after final BATCH_SIZE is known
+    NUM_BATCHES = (NUM_IMAGES + BATCH_SIZE - 1) / BATCH_SIZE;
+
 
     // Only show ratio for heterogeneous mode
     if (mode == 0) {
