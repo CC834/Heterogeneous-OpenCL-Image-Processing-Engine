@@ -41,3 +41,35 @@ BATCH SIZE: 50
     probe ratio=0.050 -> avg_time=4104.91ms, avg_imb=77.86%
     probe ratio=0.050 -> avg_time=4531.52ms, avg_imb=75.83%
     probe ratio=0.050 -> avg_time=4574.40ms, avg_imb=76.03%
+    probe ratio=0.050 -> avg_time=4085.85ms, avg_imb=77.63%
+    probe ratio=0.050 -> avg_time=4458.32ms, avg_imb=76.06%
+    probe ratio=0.050 -> avg_time=4349.62ms, avg_imb=74.46%
+    probe ratio=0.050 -> avg_time=4202.69ms, avg_imb=78.13%
+  -> best micro ratio=probe time=ratio=0.050ms imb=-> avg_time=4528.16ms, avg_imb=75.93%%
+
+  FINAL for batch=50: ratio=probe avg_time=ratio=0.050ms avg_imb=-> avg_time=4528.16ms, avg_imb=75.93%%
+
+============================================
+BATCH SIZE: 100
+============================================
+  Stage 1 (coarse search)...
+    probe ratio=0.050 -> avg_time=4254.27ms, avg_imb=78.43%
+    probe ratio=0.100 -> avg_time=4172.92ms, avg_imb=75.60%
+    probe ratio=0.200 -> avg_time=4066.86ms, avg_imb=66.96%
+    probe ratio=0.300 -> avg_time=3855.21ms, avg_imb=56.70%
+    probe ratio=0.400 -> avg_time=3739.97ms, avg_imb=42.60%
+    probe ratio=0.500 -> avg_time=3504.93ms, avg_imb=24.56%
+    probe ratio=0.600 -> avg_time=3229.38ms, avg_imb=5.46%
+    probe ratio=0.700 -> avg_time=2999.89ms, avg_imb=28.60%
+    probe ratio=0.800 -> avg_time=2802.31ms, avg_imb=53.96%
+    probe ratio=0.900 -> avg_time=2600.12ms, avg_imb=69.16%
+    probe ratio=0.950 -> avg_time=2745.78ms, avg_imb=83.70%
+  -> best coarse ratio=probe time=ratio=0.050ms imb=-> avg_time=4254.27ms, avg_imb=78.43%%
+
+  Stage 2 (fine search around probe)...
+    probe ratio=0.050 -> avg_time=4372.62ms, avg_imb=76.93%
+    probe ratio=0.050 -> avg_time=4564.10ms, avg_imb=76.66%
+    probe ratio=0.050 -> avg_time=4406.98ms, avg_imb=78.20%
+    probe ratio=0.050 -> avg_time=4290.53ms, avg_imb=78.20%
+    probe ratio=0.050 -> avg_time=4613.26ms, avg_imb=75.63%
+    probe ratio=0.050 -> avg_time=4784.40ms, avg_imb=74.66%
