@@ -73,3 +73,10 @@ BATCH SIZE: 100
     probe ratio=0.050 -> avg_time=4290.53ms, avg_imb=78.20%
     probe ratio=0.050 -> avg_time=4613.26ms, avg_imb=75.63%
     probe ratio=0.050 -> avg_time=4784.40ms, avg_imb=74.66%
+    probe ratio=0.050 -> avg_time=5016.43ms, avg_imb=67.76%
+    probe ratio=0.060 -> avg_time=4193.92ms, avg_imb=77.30%
+    probe ratio=0.080 -> avg_time=4107.34ms, avg_imb=75.40%
+  -> best fine ratio=probe time=ratio=0.050ms imb=-> avg_time=4372.62ms, avg_imb=76.93%%
+
+  Stage 3 (micro search around probe)...
+    probe ratio=0.050 -> avg_time=4165.43ms, avg_imb=77.63%
