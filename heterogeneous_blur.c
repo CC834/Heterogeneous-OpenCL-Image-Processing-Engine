@@ -1,3 +1,5 @@
+// g++ -o heterogeneous_blur heterogeneous_blur.c -lOpenCL -lX11 -lpthread -lpng -ljpeg -I./CImg
+
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>

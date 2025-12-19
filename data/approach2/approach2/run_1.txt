@@ -1,0 +1,97 @@
+========== SPLIT-IMAGE CONFIGURATION ==========
+Input file: ./image_320x240.jpg
+Number of images in stream: 5000
+Batch size: 35 images
+Number of batches: 143
+Work-group size: 16x16
+GPU ratio: 50.0% (rows to GPU)
+Halo size: 1 row(s)
+================================================
+
+Original image loaded: 320x240, 3 channels
+Size of one image: 230400 bytes (225.00 KB)
+Original image converted to interleaved format
+
+Split configuration:
+  Split row: 120 (CPU: rows 0-119, GPU: rows 120-239)
+  CPU: 121 input rows (inc. halo), 120 output rows
+  GPU: 121 input rows (inc. halo), 120 output rows
+  CPU input size: 113.44 KB, output size: 112.50 KB
+  GPU input size: 113.44 KB, output size: 112.50 KB
+
+Platform 0: Intel(R) FPGA Emulation Platform for OpenCL(TM)
+Platform 1: Intel(R) OpenCL
+Platform 2: Intel(R) OpenCL HD Graphics
+CPU device: 12th Gen Intel(R) Core(TM) i7-12700
+GPU device: Intel(R) Graphics [0x4680]
+
+Loading kernel source...
+Kernel source loaded (2054 bytes)
+Building kernel for CPU...
+CPU kernel built successfully
+Building kernel for GPU...
+GPU kernel built successfully
+Kernel objects created
+
+Allocating device buffers...
+Device buffers allocated
+
+Setting kernel arguments...
+Kernel arguments set
+
+CPU global size: 320 x 128
+GPU global size: 320 x 128
+Local size: 16 x 16
+
+All batches finished!
+
+========== PERFORMANCE RESULTS ==========
+
+BATCH SIZE :35
+1. OVERALL EXECUTION TIME
+   Total wall-clock time: 911.23 ms (0.91 seconds)
+   Total images processed: 5000
+
+2. CPU DEVICE (processed 5000 images - top 120 rows each)
+   Total CPU time:        786.90 ms
+   - Transfer IN:         85.75 ms (10.9%)
+   - Kernel execution:    623.58 ms (79.2%)
+   - Transfer OUT:        77.57 ms (9.9%)
+
+3. GPU DEVICE (processed 5000 images - bottom 120 rows each)
+   Total GPU time:        283.40 ms
+   - Transfer IN:         22.43 ms (7.9%)
+   - Kernel execution:    235.72 ms (83.2%)
+   - Transfer OUT:        25.24 ms (8.9%)
+
+============================
+4. DEVICE COMPARISON
+   GPU is 2.78x FASTER than CPU
+   CPU/GPU time ratio: 2.78
+
+5. WORKLOAD BALANCE
+   Workload imbalance: 64.0%
+   CPU is the BOTTLENECK (503.51 ms slower)
+
+6. BOTTLENECK IDENTIFICATION
+   CPU bottleneck: COMPUTATION (79.2% of time)
+   GPU bottleneck: COMPUTATION (83.2% of time)
+
+7. THROUGHPUT
+   Overall throughput: 421.41 Megapixels/sec
+   Images per second: 5487.09
+
+=========================================
+
+8. SPLIT-IMAGE STATISTICS
+   CPU time per image: 0.157 ms (for 120 rows)
+   GPU time per image: 0.057 ms (for 120 rows)
+   Combined time per image: 0.182 ms
+   Current GPU ratio: 50.0%
+
+9. OPTIMAL RATIO RECOMMENDATION
+   CPU: 0.00131 ms/row
+   GPU: 0.00047 ms/row
+   Recommended GPU ratio: 73.5%
+   Run with: ./split_image_blur 0.735
+

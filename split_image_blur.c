@@ -1,3 +1,5 @@
+// g++ -o split_image_blur split_image_blur.c -lOpenCL -ljpeg -lpthread
+
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -543,7 +545,7 @@ int main(int argc, char** argv)
         clFinish(q_cpu);
         clFinish(q_gpu);
 
-        if (SAVE_IMAGE == TRUE){
+        if (SAVE_IMAGE){
             if (batch == 0) {
                 save_one_image_rgb("split_output.jpg", batch_output, width, height, channels);
                 printf("Saved example output: split_output.jpg\n");
