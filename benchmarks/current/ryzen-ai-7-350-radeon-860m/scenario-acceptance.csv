@@ -1,0 +1,7 @@
+scenario,frames,mode,seed,minimum_clearance_m,collisions,max_brake,min_speed_mps,final_x_m,final_y_m
+frontal-wall,120,gpu,42,2.93784,0,0.26667,0.45,3.46798,1.77527
+offset-pillar,120,gpu,42,0.64574,0,0.00000,0.90,6.62547,-1.50976
+doorway,120,gpu,42,0.75000,0,0.00000,2.00,7.93333,0.00000
+corridor,120,gpu,42,2.50000,0,0.00000,2.00,7.93333,0.00000
+safe-lateral-pass,120,gpu,42,3.15000,0,0.00000,2.00,7.93333,0.00000
+crossing-obstacle,120,gpu,42,1.11668,0,0.13333,1.00,7.40677,-0.36090
