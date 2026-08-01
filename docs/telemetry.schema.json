@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/CC834/flowguard-opencl/blob/main/docs/telemetry.schema.json",
+  "title": "FlowGuard telemetry",
+  "type": "object",
+  "required": ["schema_version", "frame_id", "simulation_time_s", "mode", "latency_ms", "fps", "deadline_missed", "gpu_ratio", "sector_risk", "warning", "command", "evaluation_only"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "frame_id": { "type": "integer", "minimum": 0 },
+    "simulation_time_s": { "type": "number", "minimum": 0 },
+    "mode": { "enum": ["cpu", "gpu", "fixed", "adaptive"] },
+    "pose": { "type": "object", "required": ["x", "y", "z", "yaw"] },
+    "latency_ms": { "type": "object", "required": ["decode", "perception", "risk_control", "render", "total"] },
+    "fps": { "type": "number", "minimum": 0 },
+    "deadline_missed": { "type": "boolean" },
+    "gpu_ratio": { "type": "number", "minimum": 0, "maximum": 1 },
+    "sector_risk": { "type": "array", "minItems": 3, "maxItems": 3, "items": { "type": "number", "minimum": 0, "maximum": 1 } },
+    "minimum_ttc_s": { "type": ["number", "null"] },
+    "warning": { "enum": ["clear", "yellow", "red"] },
+    "command": { "type": "object", "required": ["speed", "yaw_rate", "brake"] },
+    "evaluation_only": { "type": "object", "required": ["nearest_obstacle_m", "true_ttc_s", "collision"] }
+  },
+  "additionalProperties": true
+}
