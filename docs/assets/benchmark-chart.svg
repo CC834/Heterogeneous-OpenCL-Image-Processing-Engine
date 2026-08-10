@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="360" viewBox="0 0 1000 360" role="img" aria-labelledby="title desc">
+  <title id="title">FlowGuard OpenCL benchmark modes</title>
+  <desc id="desc">Measured throughput was CPU 97.8, GPU 237.6, fixed 73.3, and adaptive 68.1 frames per second.</desc>
+  <rect width="1000" height="360" rx="18" fill="#071014"/>
+  <text x="52" y="56" fill="#5ee5c1" font-family="monospace" font-size="16">FLOWGUARD OPENCL · CURRENT-HOST SMOKE COMPARISON</text>
+  <text x="52" y="90" fill="#eaf4f7" font-family="sans-serif" font-weight="bold" font-size="30">Truthful scheduling, visible decisions</text>
+  <line x1="52" y1="292" x2="948" y2="292" stroke="#294047"/>
+  <g font-family="monospace" font-size="14" text-anchor="middle">
+    <rect x="105" y="210" width="130" height="82" fill="#27424c"/><text x="170" y="198" fill="#eaf4f7">97.8 fps</text><text x="170" y="320" fill="#9bb1b7">CPU</text>
+    <rect x="325" y="92" width="130" height="200" fill="#1e9c86"/><text x="390" y="80" fill="#eaf4f7">237.6 fps</text><text x="390" y="320" fill="#9bb1b7">GPU</text>
+    <rect x="545" y="230" width="130" height="62" fill="#44bfa8"/><text x="610" y="218" fill="#eaf4f7">73.3 fps</text><text x="610" y="320" fill="#9bb1b7">FIXED</text>
+    <rect x="765" y="235" width="130" height="57" fill="#5ee5c1"/><text x="830" y="223" fill="#eaf4f7">68.1 fps</text><text x="830" y="320" fill="#9bb1b7">ADAPTIVE</text>
+  </g>
+  <text x="948" y="342" fill="#607b82" font-family="monospace" font-size="11" text-anchor="end">Ryzen AI 7 350 + Radeon 860M · 640×360 · 10 frames after warm-up · smoke evidence only</text>
+</svg>
