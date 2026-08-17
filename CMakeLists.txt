@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(flowguard_opencl VERSION 1.0.0 LANGUAGES CXX)
+project(flowguard_opencl VERSION 1.1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -16,6 +16,8 @@ add_library(flowguard_core
   src/scheduler.cpp
   src/risk_control.cpp
   src/protocol.cpp
+  src/hardware_profile.cpp
+  src/control_output.cpp
   src/artifacts.cpp
   src/opencl_pipeline.cpp
   src/dashboard.cpp
@@ -41,11 +43,14 @@ target_compile_options(flowguard PRIVATE -Wall -Wextra -Wpedantic)
 
 include(CTest)
 if(BUILD_TESTING)
+  find_package(Python3 QUIET COMPONENTS Interpreter)
   add_executable(flowguard_tests
     tests/test_main.cpp
     tests/test_scheduler.cpp
     tests/test_risk_control.cpp
     tests/test_protocol.cpp
+    tests/test_hardware_profile.cpp
+    tests/test_control_output.cpp
     tests/test_opencl.cpp
   )
   target_link_libraries(flowguard_tests PRIVATE flowguard_core)
@@ -53,6 +58,12 @@ if(BUILD_TESTING)
   add_test(NAME flowguard_unit COMMAND flowguard_tests)
   add_test(NAME flowguard_synthetic_replay
     COMMAND flowguard replay --synthetic expanding --frames 12 --mode cpu --no-dashboard)
+  if(Python3_Interpreter_FOUND)
+    add_test(NAME flowguard_px4_bridge_help
+      COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/integrations/px4_bridge.py --help)
+    add_test(NAME flowguard_px4_bridge_unit
+      COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_px4_bridge.py)
+  endif()
 endif()
 
 install(TARGETS flowguard RUNTIME DESTINATION bin)
