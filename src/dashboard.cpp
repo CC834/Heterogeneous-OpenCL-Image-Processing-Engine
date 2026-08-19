@@ -53,23 +53,44 @@ cv::Mat NativeDashboard::render(const cv::Mat& frame,
                   cv::FILLED);
   }
 
-  cv::rectangle(output, {0, 0, output.cols, 58}, {18, 22, 28}, cv::FILLED);
-  const std::string line1 = "FLOWGUARD  " + telemetry.mode + "  " +
-                            fixed(telemetry.fps) + " FPS  " +
-                            fixed(telemetry.latency.total_ms) + " ms";
+  cv::rectangle(output, {0, 0, output.cols, 78}, {18, 22, 28}, cv::FILLED);
+  const bool compact = output.cols < 500;
+  const std::string line1 = "FLOWGUARD " + telemetry.mode + " " +
+                            fixed(telemetry.fps) + (compact ? "fps " : " FPS  ") +
+                            fixed(telemetry.latency.total_ms) + "ms";
   const std::string line2 = "TTC " +
       (std::isfinite(telemetry.risk.minimum_ttc_s) ? fixed(telemetry.risk.minimum_ttc_s, 2) + "s" : "--") +
-      "   CPU/GPU " + fixed((1.0F - telemetry.gpu_ratio) * 100.0F, 0) + "/" +
-      fixed(telemetry.gpu_ratio * 100.0F, 0) + "%   speed " +
-      fixed(telemetry.command.speed_mps) + " yaw " + fixed(telemetry.command.yaw_rate_deg_s, 0);
-  cv::putText(output, line1, {12, 23}, cv::FONT_HERSHEY_SIMPLEX, 0.52, color, 1, cv::LINE_AA);
-  cv::putText(output, line2, {12, 47}, cv::FONT_HERSHEY_SIMPLEX, 0.43, {225, 225, 225}, 1,
+      " CPU/GPU " + fixed((1.0F - telemetry.gpu_ratio) * 100.0F, 0) + "/" +
+      fixed(telemetry.gpu_ratio * 100.0F, 0) + "% " +
+      (compact ? "cmd " : "  speed ") + fixed(telemetry.command.speed_mps) + "m/s " +
+      fixed(telemetry.command.yaw_rate_deg_s, 0) + "deg/s";
+  std::string profile_label = telemetry.hardware.profile;
+  if (profile_label.size() > 4 && profile_label.substr(profile_label.size() - 4) == "-sim") {
+    profile_label.resize(profile_label.size() - 4);
+  }
+  std::string line3 = std::string(telemetry.hardware.simulated ? "SIM " : "HOST ") +
+      profile_label + " " +
+      std::to_string(telemetry.hardware.frame_width) + "x" +
+      std::to_string(telemetry.hardware.frame_height) + "@" +
+      fixed(telemetry.hardware.target_fps, 0);
+  if (!compact) line3 += " deadline " + fixed(telemetry.hardware.deadline_ms, 1) + "ms";
+  if (telemetry.hardware.throttled) line3 += " THROTTLED";
+  if (telemetry.hardware.fallback_active) line3 += " FAILOVER";
+  if (telemetry.hardware.frame_reused) line3 += " REUSE";
+  cv::putText(output, line1, {12, 23}, cv::FONT_HERSHEY_SIMPLEX, compact ? 0.40 : 0.52,
+              color, 1, cv::LINE_AA);
+  cv::putText(output, line2, {12, 47}, cv::FONT_HERSHEY_SIMPLEX, compact ? 0.33 : 0.43,
+              {225, 225, 225}, 1,
               cv::LINE_AA);
-  cv::circle(output, {output.cols - 22, 22}, 9, color, cv::FILLED);
+  cv::putText(output, line3, {12, 68}, cv::FONT_HERSHEY_SIMPLEX, 0.35,
+              telemetry.hardware.simulated ? cv::Scalar(100, 220, 255)
+                                           : cv::Scalar(160, 175, 180),
+              1, cv::LINE_AA);
+  if (!compact) cv::circle(output, {output.cols - 22, 22}, 9, color, cv::FILLED);
 
   route_.push_back({static_cast<float>(telemetry.pose.x), static_cast<float>(telemetry.pose.y)});
   if (route_.size() > 120) route_.pop_front();
-  const cv::Rect map(output.cols - 120, 64, 110, 74);
+  const cv::Rect map(output.cols - 120, 82, 110, 74);
   cv::rectangle(output, map, {20, 25, 31}, cv::FILLED);
   for (std::size_t i = 1; i < route_.size(); ++i) {
     const auto map_point = [&](const cv::Point2f& p) {
