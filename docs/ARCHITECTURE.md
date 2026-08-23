@@ -8,11 +8,15 @@ tree:
 ```text
 Blender frames / video replay
             ↓
+virtual camera constraints (optional, explicitly labelled)
+            ↓
 application frame loop ─────→ telemetry ─────→ native UI / web / artifacts
             ↓
 OpenCL perception → risk estimation → avoidance controller
             ↕
       tile scheduler
+            ↓
+virtual actuator / loopback PX4 bridge (optional)
 ```
 
 `src/main.cpp` maps exceptions to an exit status. `src/application.cpp` is the
@@ -56,6 +60,13 @@ but application code only copies it into telemetry and artifacts.
 127.0.0.1 and serves the React build plus 10 FPS WebSocket telemetry. `artifacts.cpp`
 owns run directories, metadata, JSONL, MP4, and benchmark CSV.
 
+`hardware_profile.cpp` owns declared camera, timing, thermal, and device-fault
+models. It never accepts ground truth. Real host OpenCL timing remains separate from
+injected latency, and the formal benchmark path rejects virtual profiles.
+`control_output.cpp` owns the versioned loopback UDP command boundary. The optional
+Python PX4 bridge translates only the applied speed/yaw command and remains outside
+the core perception and policy graph.
+
 ## Invariants
 
 - Simulator ground truth never influences perception or control.
@@ -64,10 +75,15 @@ owns run directories, metadata, JSONL, MP4, and benchmark CSV.
 - CPU/GPU single-device modes do not require or initialize the other class.
 - Formal benchmarks run one mode at a time on the same immutable replay and exclude
   warm-up.
+- Formal benchmarks use only `desktop-native`; virtual constraints are never
+  presented as physical-board measurements.
 - Rendering, encoding, web delivery, and Blender rendering are outside perception
   timing unless a report explicitly says end-to-end.
-- Telemetry schema version 1 is shared by native UI, live web, JSONL, and reports.
+- Telemetry schema version 2 adds the virtual-hardware state and is shared by native
+  UI, live web, JSONL, and reports. The web replay UI still reads historical v1 runs.
 - Simulator and web listeners bind to loopback.
+- The optional external command output is loopback-only and PX4 arming requires an
+  explicit bridge flag.
 - Every performance claim names the hardware/runtime that produced it.
 
 ## Adding or splitting code

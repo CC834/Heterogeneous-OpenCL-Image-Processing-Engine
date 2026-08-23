@@ -3,6 +3,9 @@
 /web/node_modules/
 /web/dist/
 /.cache/
+.venv-px4/
+__pycache__/
+*.pyc
 *.user
 *.swp
 *.tsbuildinfo
