@@ -1,4 +1,3 @@
-# Lab 6: Heterogeneous Programming in OpenCL
 
 ## Overview
 This project implements heterogeneous image processing using OpenCL, utilizing both CPU and GPU devices concurrently to apply Gaussian blur to a stream of 5000 images.
