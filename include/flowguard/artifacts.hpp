@@ -16,7 +16,7 @@ std::string telemetry_json(const Telemetry& telemetry);
 class RunArtifacts {
  public:
   RunArtifacts(const std::filesystem::path& root, const std::string& command,
-               cv::Size frame_size, double fps);
+               cv::Size frame_size, double fps, const VirtualHardwareState& hardware);
   ~RunArtifacts();
 
   void append(const Telemetry& telemetry, const cv::Mat& annotated_frame);

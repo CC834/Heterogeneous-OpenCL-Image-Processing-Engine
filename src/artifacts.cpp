@@ -28,9 +28,12 @@ std::string telemetry_json(const Telemetry& t) {
       << ",\"mode\":\"" << t.mode << "\""
       << ",\"pose\":{\"x\":" << json_float(t.pose.x) << ",\"y\":" << json_float(t.pose.y)
       << ",\"z\":" << json_float(t.pose.z) << ",\"yaw\":" << json_float(t.pose.yaw) << "}"
-      << ",\"latency_ms\":{\"decode\":" << json_float(t.latency.decode_ms)
+      << ",\"latency_ms\":{\"camera\":" << json_float(t.latency.camera_ms)
+      << ",\"decode\":" << json_float(t.latency.decode_ms)
       << ",\"perception\":" << json_float(t.latency.perception_ms)
       << ",\"risk_control\":" << json_float(t.latency.risk_control_ms)
+      << ",\"actuation\":" << json_float(t.latency.actuation_ms)
+      << ",\"thermal_penalty\":" << json_float(t.latency.thermal_penalty_ms)
       << ",\"render\":" << json_float(t.latency.render_ms)
       << ",\"total\":" << json_float(t.latency.total_ms) << "}"
       << ",\"fps\":" << json_float(t.fps)
@@ -43,6 +46,23 @@ std::string telemetry_json(const Telemetry& t) {
       << ",\"command\":{\"speed\":" << json_float(t.command.speed_mps)
       << ",\"yaw_rate\":" << json_float(t.command.yaw_rate_deg_s)
       << ",\"brake\":" << json_float(t.command.brake) << "}"
+      << ",\"virtual_hardware\":{\"profile\":\"" << t.hardware.profile
+      << "\",\"simulated\":" << (t.hardware.simulated ? "true" : "false")
+      << ",\"camera\":{\"width\":" << t.hardware.frame_width
+      << ",\"height\":" << t.hardware.frame_height
+      << ",\"target_fps\":" << json_float(t.hardware.target_fps) << "}"
+      << ",\"declared_cpu_cores\":" << t.hardware.declared_cpu_cores
+      << ",\"declared_memory_mb\":" << t.hardware.declared_memory_mb
+      << ",\"temperature_c\":" << json_float(t.hardware.temperature_c)
+      << ",\"throttled\":" << (t.hardware.throttled ? "true" : "false")
+      << ",\"gpu_available\":" << (t.hardware.gpu_available ? "true" : "false")
+      << ",\"fallback_active\":" << (t.hardware.fallback_active ? "true" : "false")
+      << ",\"frame_reused\":" << (t.hardware.frame_reused ? "true" : "false")
+      << ",\"deadline_ms\":" << json_float(t.hardware.deadline_ms)
+      << ",\"applied_command\":{\"speed\":"
+      << json_float(t.hardware.applied_command.speed_mps)
+      << ",\"yaw_rate\":" << json_float(t.hardware.applied_command.yaw_rate_deg_s)
+      << ",\"brake\":" << json_float(t.hardware.applied_command.brake) << "}}"
       << ",\"evaluation_only\":{\"nearest_obstacle_m\":"
       << json_float(t.evaluation.nearest_obstacle_m) << ",\"true_ttc_s\":"
       << json_float(t.evaluation.time_to_contact_s) << ",\"collision\":"
@@ -59,7 +79,8 @@ std::string make_run_id() {
 }
 
 RunArtifacts::RunArtifacts(const std::filesystem::path& root, const std::string& command,
-                           cv::Size frame_size, double fps)
+                           cv::Size frame_size, double fps,
+                           const VirtualHardwareState& hardware)
     : directory_(root / make_run_id()) {
   std::filesystem::create_directories(directory_ / "report");
   telemetry_.open(directory_ / "telemetry.jsonl");
@@ -74,6 +95,9 @@ RunArtifacts::RunArtifacts(const std::filesystem::path& root, const std::string&
   metadata << "{\"schema_version\":1,\"command\":\"" << command
            << "\",\"frame_width\":" << frame_size.width
            << ",\"frame_height\":" << frame_size.height
+           << ",\"hardware_profile\":\"" << hardware.profile << "\""
+           << ",\"hardware_simulated\":" << (hardware.simulated ? "true" : "false")
+           << ",\"evidence_note\":\"Host OpenCL timing; virtual profile delays are simulated\""
            << ",\"opencl_header_version\":\"" << CL_VERSION_MAJOR(CL_TARGET_OPENCL_VERSION)
            << '.' << CL_VERSION_MINOR(CL_TARGET_OPENCL_VERSION) << "\"}\n";
 }

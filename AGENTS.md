@@ -14,6 +14,7 @@ Important paths:
 - `kernels/`: measured OpenCL perception code.
 - `simulator/`: Blender client and evaluation-only ground truth.
 - `web/`: React/TypeScript live dashboard and saved-report UI.
+- `integrations/`: optional, isolated adapters such as the loopback PX4 SITL bridge.
 - `tests/`: dependency-free behavior tests and OpenCL synthetic replay.
 - `benchmarks/legacy/`: immutable, clearly labelled pre-FlowGuard evidence.
 
@@ -58,7 +59,9 @@ Focused runtime checks:
 
 ```bash
 build/flowguard devices
+build/flowguard hardware-profiles
 build/flowguard replay --synthetic expanding --frames 12 --mode cpu --no-dashboard
+build/flowguard replay --synthetic expanding --frames 12 --mode cpu --hardware-profile edge-constrained-sim --no-dashboard
 build/flowguard replay --synthetic expanding --frames 12 --mode gpu --no-dashboard
 build/flowguard replay --synthetic expanding --frames 12 --mode fixed --gpu-ratio 0.70 --no-dashboard
 build/flowguard replay --synthetic expanding --frames 32 --mode adaptive --no-dashboard
@@ -86,6 +89,9 @@ synthetic replay because hosted runners do not provide the local Radeon GPU.
 - Ground truth is evaluation-only. Never add it to a perception, risk, scheduler, or
   controller signature. Dashboards render engine telemetry and must not recalculate
   decisions independently.
+- Keep virtual hardware and flight-stack adapters outside perception and policy.
+  Simulated latency/faults must remain separately labelled from measured OpenCL
+  time, and external command outputs must remain loopback-only by default.
 - Add shared frontend code only after real reuse. Keep feature code colocated and do
   not create empty feature-folder architecture.
 
@@ -117,6 +123,8 @@ synthetic replay because hosted runners do not provide the local Radeon GPU.
   minimum clearance, and unnecessary braking where the input provides ground truth.
 - Never claim a forced speedup or present this laptop's result as Jetson, Raspberry
   Pi, edge-device, LiDAR, or real-flight evidence.
+- `*-sim` hardware profiles are constraint experiments, not named-board evidence.
+  `benchmark` must remain restricted to the non-emulated host profile.
 
 ## Definition of done
 

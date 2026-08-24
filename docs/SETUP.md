@@ -41,3 +41,18 @@ npm run build
 Blender is needed for closed-loop scenarios, but not for CTest's deterministic
 synthetic replay. Formal local verification should additionally run Blender and all
 locally available OpenCL device modes.
+
+## Optional PX4 SITL bridge
+
+PX4 and `pymavlink` are not build dependencies. Use a virtual environment if you
+want to try the experimental bridge:
+
+```bash
+python3 -m venv .venv-px4
+. .venv-px4/bin/activate
+python -m pip install pymavlink
+python integrations/px4_bridge.py --help
+```
+
+Follow [the PX4 SITL guide](PX4_SITL.md); the bridge stays disarmed unless `--arm`
+is explicitly supplied.

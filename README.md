@@ -1,7 +1,7 @@
 # FlowGuard OpenCL — Exploring Real-Time Visual Drone Collision Avoidance Across CPU and GPU
 
 [![CI](https://github.com/CC834/flowguard-opencl/actions/workflows/ci.yml/badge.svg)](https://github.com/CC834/flowguard-opencl/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/CC834/flowguard-opencl)](https://github.com/CC834/flowguard-opencl/releases/tag/v1.0.0)
+[![Release](https://img.shields.io/github/v/release/CC834/flowguard-opencl)](https://github.com/CC834/flowguard-opencl/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-5ee5c1.svg)](LICENSE)
 [![C++17](https://img.shields.io/badge/C%2B%2B-17-4b8bbe.svg)](CMakeLists.txt)
 
@@ -62,11 +62,45 @@ benchmarking.
   expansion, radial TTC proxies, spatial clusters, and left/centre/right risk.
 - Smoothed 2 m/s, ±60°/s avoidance with 3 m/s² braking and turn hysteresis.
 - CPU-only, GPU-only, fixed heterogeneous, and adaptive heterogeneous modes.
+- Declared virtual onboard-compute profiles for camera degradation, lower frame
+  rates, thermal throttling, GPU failure, actuator delay, and CPU failover.
 - OpenCV live dashboard and recording, plus a React/TypeScript live/replay dashboard.
 - JSONL telemetry, annotated MP4, CSV benchmark results, metadata, and static reports.
 
 Ground truth lives in `Telemetry::evaluation` and is used only when recording
 outcomes. Perception and control APIs cannot accept it.
+
+## Simulate onboard drone hardware
+
+The real OpenCL pipeline can run inside deterministic virtual hardware constraints,
+making failure and deadline behavior visible before a physical edge board is
+available:
+
+```bash
+build/flowguard hardware-profiles
+build/flowguard simulate --scenario crossing-obstacle --mode adaptive \
+  --hardware-profile thermal-throttle-sim --dashboard native,web --record
+build/flowguard simulate --scenario corridor --mode adaptive \
+  --hardware-profile gpu-failure-sim --dashboard native --record
+```
+
+![FlowGuard thermal-throttle virtual hardware run](docs/assets/virtual-hardware-throttle.png)
+
+The frame above is recorded engine output: the declared thermal profile has crossed
+its two-second threshold, the added penalty causes a 30 Hz deadline miss, and the
+controller is reacting to the expanding synthetic obstacle.
+
+The dashboards identify these runs as **VIRTUAL HARDWARE** and show camera rate,
+temperature model, throttling, reused frames, GPU state, CPU failover, and applied
+command delay. OpenCL perception is still measured on this host; camera/thermal/
+actuator penalties are injected and separately labelled. Formal benchmarks reject
+virtual profiles so they cannot be mistaken for physical-device results.
+
+An optional loopback command bridge can drive PX4 SITL with BODY_NED velocity and
+yaw-rate setpoints. It is disarmed by default and is documented in
+[the PX4 SITL guide](docs/PX4_SITL.md). This is an experimental integration, not a
+claim of real flight-controller validation. See [the virtual-hardware model](docs/VIRTUAL_HARDWARE.md)
+for exact profiles and measurement boundaries.
 
 ## Quick start
 
@@ -108,7 +142,9 @@ The local web dashboard is available at `http://127.0.0.1:8080` when enabled.
 
 ```text
 flowguard devices
+flowguard hardware-profiles
 flowguard simulate --scenario corridor --mode adaptive --dashboard native,web --record
+flowguard simulate --scenario corridor --mode adaptive --hardware-profile edge-balanced-sim
 flowguard replay --input flight.mp4 --mode fixed --gpu-ratio 0.70
 flowguard benchmark --suite default --modes cpu,gpu,fixed,adaptive --repeats 5
 flowguard report --run artifacts/<run-id>
@@ -150,8 +186,8 @@ CLI / OpenCV UI / React UI / Blender transport
 ```
 
 See [architecture](docs/ARCHITECTURE.md), [simulator protocol](docs/PROTOCOL.md),
-and the [versioned telemetry schema](docs/telemetry.schema.json) for the precise
-contracts.
+[virtual onboard hardware](docs/VIRTUAL_HARDWARE.md), and the
+[versioned telemetry schema](docs/telemetry.schema.json) for the precise contracts.
 
 ## Limits and edge-device roadmap
 

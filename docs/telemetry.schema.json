@@ -3,9 +3,9 @@
   "$id": "https://github.com/CC834/flowguard-opencl/blob/main/docs/telemetry.schema.json",
   "title": "FlowGuard telemetry",
   "type": "object",
-  "required": ["schema_version", "frame_id", "simulation_time_s", "mode", "latency_ms", "fps", "deadline_missed", "gpu_ratio", "sector_risk", "warning", "command", "evaluation_only"],
+  "required": ["schema_version", "frame_id", "simulation_time_s", "mode", "latency_ms", "fps", "deadline_missed", "gpu_ratio", "sector_risk", "warning", "command", "virtual_hardware", "evaluation_only"],
   "properties": {
-    "schema_version": { "const": 1 },
+    "schema_version": { "const": 2 },
     "frame_id": { "type": "integer", "minimum": 0 },
     "simulation_time_s": { "type": "number", "minimum": 0 },
     "mode": { "enum": ["cpu", "gpu", "fixed", "adaptive"] },
@@ -18,6 +18,22 @@
     "minimum_ttc_s": { "type": ["number", "null"] },
     "warning": { "enum": ["clear", "yellow", "red"] },
     "command": { "type": "object", "required": ["speed", "yaw_rate", "brake"] },
+    "virtual_hardware": {
+      "type": "object",
+      "required": ["profile", "simulated", "camera", "temperature_c", "throttled", "gpu_available", "fallback_active", "frame_reused", "deadline_ms", "applied_command"],
+      "properties": {
+        "profile": { "type": "string" },
+        "simulated": { "type": "boolean" },
+        "camera": { "type": "object", "required": ["width", "height", "target_fps"] },
+        "temperature_c": { "type": "number" },
+        "throttled": { "type": "boolean" },
+        "gpu_available": { "type": "boolean" },
+        "fallback_active": { "type": "boolean" },
+        "frame_reused": { "type": "boolean" },
+        "deadline_ms": { "type": "number", "exclusiveMinimum": 0 },
+        "applied_command": { "type": "object", "required": ["speed", "yaw_rate", "brake"] }
+      }
+    },
     "evaluation_only": { "type": "object", "required": ["nearest_obstacle_m", "true_ttc_s", "collision"] }
   },
   "additionalProperties": true
