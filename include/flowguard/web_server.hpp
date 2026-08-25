@@ -29,7 +29,7 @@ class WebServer {
   int listen_fd_{-1};
   std::thread thread_;
   std::mutex latest_mutex_;
-  std::string latest_{"{\"schema_version\":1,\"status\":\"waiting\"}"};
+  std::string latest_{"{\"schema_version\":2,\"status\":\"waiting\"}"};
 };
 
 }  // namespace flowguard

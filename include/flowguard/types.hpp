@@ -65,15 +65,38 @@ struct ControlCommand {
 };
 
 struct StageLatencies {
+  double camera_ms{};
   double decode_ms{};
   double perception_ms{};
   double risk_control_ms{};
+  double actuation_ms{};
+  double thermal_penalty_ms{};
   double render_ms{};
   double total_ms{};
 };
 
+struct VirtualHardwareState {
+  std::string profile{"desktop-native"};
+  bool simulated{};
+  int frame_width{640};
+  int frame_height{360};
+  double target_fps{30.0};
+  int declared_cpu_cores{};
+  int declared_memory_mb{};
+  double camera_latency_ms{};
+  double actuation_latency_ms{};
+  double thermal_penalty_ms{};
+  double temperature_c{};
+  bool throttled{};
+  bool gpu_available{true};
+  bool fallback_active{};
+  bool frame_reused{};
+  double deadline_ms{33.333};
+  ControlCommand applied_command;
+};
+
 struct Telemetry {
-  static constexpr int schema_version = 1;
+  static constexpr int schema_version = 2;
   std::uint64_t frame_id{};
   double simulation_time_s{};
   std::string mode;
@@ -84,6 +107,7 @@ struct Telemetry {
   float gpu_ratio{};
   RiskAssessment risk;
   ControlCommand command;
+  VirtualHardwareState hardware;
   GroundTruth evaluation;
 };
 

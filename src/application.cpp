@@ -19,7 +19,9 @@
 #include <opencv2/videoio.hpp>
 
 #include "flowguard/artifacts.hpp"
+#include "flowguard/control_output.hpp"
 #include "flowguard/dashboard.hpp"
+#include "flowguard/hardware_profile.hpp"
 #include "flowguard/opencl_pipeline.hpp"
 #include "flowguard/protocol.hpp"
 #include "flowguard/risk_control.hpp"
@@ -46,14 +48,18 @@ struct Options {
   bool record{};
   bool visible_blender{};
   bool connect_only{};
+  std::string hardware_profile{"desktop-native"};
+  std::string control_output;
 };
 
 std::string usage() {
-  return R"(FlowGuard OpenCL 1.0.0
+  return R"(FlowGuard OpenCL 1.1.0
 
 Usage:
   flowguard devices
+  flowguard hardware-profiles
   flowguard simulate --scenario corridor --mode adaptive --dashboard native,web --record
+  flowguard simulate --scenario corridor --mode adaptive --hardware-profile edge-balanced-sim
   flowguard replay --input flight.mp4 --mode fixed --gpu-ratio 0.70
   flowguard replay --synthetic expanding --frames 120 --mode cpu --no-dashboard
   flowguard benchmark --suite default --modes cpu,gpu,fixed,adaptive --repeats 5
@@ -64,6 +70,9 @@ Options:
   --red-ttc SECONDS      Red warning threshold (default 1.5)
   --gpu-ratio RATIO      Fixed/adaptive initial GPU tile ratio (default 0.5)
   --seed INTEGER         Deterministic simulation seed (default 42)
+  --hardware-profile ID  Declared virtual onboard-hardware profile (default desktop-native)
+  --control-output HOST:PORT
+                         Send applied commands as loopback UDP for the optional PX4 bridge
   --visible              Run Blender with a visible window
   --connect-only         Wait for an already-running simulator
 )";
@@ -94,6 +103,8 @@ Options parse_options(const std::vector<std::string>& args) {
   if (auto v = value(args, "--scenario")) options.scenario = *v;
   if (auto v = value(args, "--input")) options.input = *v;
   if (auto v = value(args, "--synthetic")) options.synthetic = *v;
+  if (auto v = value(args, "--hardware-profile")) options.hardware_profile = *v;
+  if (auto v = value(args, "--control-output")) options.control_output = *v;
   if (auto v = value(args, "--dashboard")) {
     options.native_dashboard = v->find("native") != std::string::npos;
     options.web_dashboard = v->find("web") != std::string::npos;
@@ -106,6 +117,8 @@ Options parse_options(const std::vector<std::string>& args) {
       options.repeats < 1) {
     throw std::invalid_argument("ratio, frame count, or repeat count is outside its valid range");
   }
+  (void)find_hardware_profile(options.hardware_profile);
+  if (!options.control_output.empty()) (void)parse_loopback_endpoint(options.control_output);
   return options;
 }
 
@@ -152,12 +165,13 @@ struct RunSummary {
 Telemetry process_pair(const SimulationFrame& frame, const cv::Mat& previous,
                        OpenClPerception& perception, TileScheduler& scheduler,
                        RiskEstimator& risk_estimator, AvoidanceController& controller,
-                       PerceptionResult& perception_result) {
+                       PerceptionResult& perception_result, double frame_interval_s,
+                       const VirtualHardwareState& hardware) {
   const auto started = Clock::now();
   perception_result = perception.process(previous, frame.bgr, scheduler.gpu_ratio());
   const auto domain_started = Clock::now();
   RiskAssessment risk = risk_estimator.assess(perception_result, frame.bgr.size());
-  ControlCommand command = controller.update(risk, 1.0 / 30.0);
+  ControlCommand command = controller.update(risk, frame_interval_s);
   scheduler.observe(static_cast<std::size_t>((1.0F - scheduler.gpu_ratio()) * perception_result.vectors.size()),
                     perception_result.cpu_ms,
                     static_cast<std::size_t>(scheduler.gpu_ratio() * perception_result.vectors.size()),
@@ -169,6 +183,7 @@ Telemetry process_pair(const SimulationFrame& frame, const cv::Mat& previous,
   telemetry.pose = frame.pose;
   telemetry.risk = std::move(risk);
   telemetry.command = command;
+  telemetry.hardware = hardware;
   telemetry.evaluation = frame.evaluation;
   telemetry.gpu_ratio = scheduler.gpu_ratio();
   telemetry.latency.perception_ms = perception_result.total_ms;
@@ -177,15 +192,45 @@ Telemetry process_pair(const SimulationFrame& frame, const cv::Mat& previous,
   telemetry.latency.total_ms =
       std::chrono::duration<double, std::milli>(Clock::now() - started).count();
   telemetry.fps = telemetry.latency.total_ms > 0.0 ? 1000.0 / telemetry.latency.total_ms : 0.0;
-  telemetry.deadline_missed = telemetry.latency.total_ms > 33.333;
+  telemetry.deadline_missed = telemetry.latency.total_ms > hardware.deadline_ms;
   return telemetry;
+}
+
+ExecutionMode compatible_mode(ExecutionMode requested, bool gpu_available) {
+  return !gpu_available && requested != ExecutionMode::Cpu ? ExecutionMode::Cpu : requested;
+}
+
+void add_emulated_latencies(Telemetry& telemetry, const VirtualHardwareState& hardware) {
+  telemetry.hardware = hardware;
+  telemetry.latency.camera_ms = hardware.camera_latency_ms;
+  telemetry.latency.actuation_ms = hardware.actuation_latency_ms;
+  telemetry.latency.thermal_penalty_ms = hardware.thermal_penalty_ms;
+  telemetry.latency.total_ms += hardware.camera_latency_ms + hardware.actuation_latency_ms +
+                                hardware.thermal_penalty_ms;
+  telemetry.fps = telemetry.latency.total_ms > 0.0 ? 1000.0 / telemetry.latency.total_ms : 0.0;
+  telemetry.deadline_missed = telemetry.latency.total_ms > hardware.deadline_ms;
 }
 
 int run_frames(const Options& options, const std::vector<SimulationFrame>& frames,
                bool formal_benchmark, RunSummary* summary = nullptr) {
   if (frames.size() < 2) throw std::invalid_argument("at least two frames are required");
-  OpenClPerception perception(options.mode);
-  TileScheduler scheduler(options.mode, options.gpu_ratio);
+  if (formal_benchmark && options.hardware_profile != "desktop-native") {
+    throw std::invalid_argument("formal benchmarks require --hardware-profile desktop-native; "
+                                "simulated delays are not benchmark evidence");
+  }
+  HardwareEmulator hardware(find_hardware_profile(options.hardware_profile), options.seed);
+  VirtualHardwareState previous_hardware;
+  SimulationFrame previous = frames.front();
+  previous.bgr = hardware.capture(previous.bgr, previous.frame_id, previous.simulation_time_s,
+                                  previous_hardware);
+  ExecutionMode active_mode = compatible_mode(options.mode,
+                                               hardware.gpu_available(previous.simulation_time_s));
+  if (active_mode != options.mode) {
+    std::cout << "Hardware profile " << options.hardware_profile
+              << " has no available GPU; starting CPU failover.\n";
+  }
+  auto perception = std::make_unique<OpenClPerception>(active_mode);
+  auto scheduler = std::make_unique<TileScheduler>(active_mode, options.gpu_ratio);
   RiskEstimator risk(options.thresholds);
   AvoidanceController controller;
   NativeDashboard dashboard(options.native_dashboard && !formal_benchmark);
@@ -197,18 +242,38 @@ int run_frames(const Options& options, const std::vector<SimulationFrame>& frame
   }
   std::unique_ptr<RunArtifacts> artifacts;
   if (options.record && !formal_benchmark) {
-    artifacts = std::make_unique<RunArtifacts>("artifacts", "replay", frames[0].bgr.size(), 30.0);
+    artifacts = std::make_unique<RunArtifacts>("artifacts", "replay", previous.bgr.size(),
+                                               hardware.profile().target_fps, previous_hardware);
   }
 
   for (std::size_t i = 1; i < frames.size(); ++i) {
+    SimulationFrame current = frames[i];
+    VirtualHardwareState hardware_state;
+    current.bgr = hardware.capture(current.bgr, current.frame_id, current.simulation_time_s,
+                                   hardware_state);
+    const ExecutionMode next_mode = compatible_mode(options.mode, hardware_state.gpu_available);
+    if (next_mode != active_mode) {
+      active_mode = next_mode;
+      perception = std::make_unique<OpenClPerception>(active_mode);
+      scheduler = std::make_unique<TileScheduler>(active_mode, options.gpu_ratio);
+      hardware_state.fallback_active = active_mode != options.mode;
+      std::cout << "Frame " << current.frame_id << ": simulated GPU unavailable; CPU failover active.\n";
+    } else {
+      hardware_state.fallback_active = active_mode != options.mode;
+    }
     PerceptionResult perception_result;
-    Telemetry telemetry = process_pair(frames[i], frames[i - 1].bgr, perception, scheduler,
-                                       risk, controller, perception_result);
-    telemetry.mode = to_string(options.mode);
+    const double frame_interval_s = std::max(0.001, current.simulation_time_s -
+                                                     previous.simulation_time_s);
+    Telemetry telemetry = process_pair(current, previous.bgr, *perception, *scheduler,
+                                       risk, controller, perception_result,
+                                       frame_interval_s, hardware_state);
+    telemetry.mode = to_string(active_mode);
+    hardware.apply_thermal_penalty(current.simulation_time_s, hardware_state);
+    add_emulated_latencies(telemetry, hardware_state);
     cv::Mat annotated;
     if (!formal_benchmark && (options.native_dashboard || options.web_dashboard || artifacts)) {
       const auto render_started = Clock::now();
-      annotated = dashboard.render(frames[i].bgr, perception_result, telemetry);
+      annotated = dashboard.render(current.bgr, perception_result, telemetry);
       telemetry.latency.render_ms =
           std::chrono::duration<double, std::milli>(Clock::now() - render_started).count();
     }
@@ -233,6 +298,7 @@ int run_frames(const Options& options, const std::vector<SimulationFrame>& frame
       }
       summary->final_gpu_ratio = telemetry.gpu_ratio;
     }
+    previous = std::move(current);
   }
   if (artifacts) std::cout << "Artifacts: " << artifacts->directory() << '\n';
   return 0;
@@ -268,6 +334,10 @@ double percentile(std::vector<double> values, double fraction) {
 
 int benchmark(const std::vector<std::string>& args) {
   Options base = parse_options(args);
+  if (base.hardware_profile != "desktop-native") {
+    throw std::invalid_argument("benchmark accepts only desktop-native hardware; use replay or simulate "
+                                "to explore virtual profiles");
+  }
   base.synthetic = "expanding";
   base.frames = value(args, "--frames") ? base.frames : 62;
   const std::string modes = value(args, "--modes").value_or("cpu,gpu,fixed,adaptive");
@@ -338,32 +408,69 @@ int simulate(const std::vector<std::string>& args) {
   std::cout << "Waiting for Blender on 127.0.0.1:8765...\n";
   server.wait_for_client();
 
-  OpenClPerception perception(options.mode);
-  TileScheduler scheduler(options.mode, options.gpu_ratio);
+  HardwareEmulator hardware(find_hardware_profile(options.hardware_profile), options.seed);
+  ExecutionMode active_mode = compatible_mode(options.mode, hardware.gpu_available(0.0));
+  auto perception = std::make_unique<OpenClPerception>(active_mode);
+  auto scheduler = std::make_unique<TileScheduler>(active_mode, options.gpu_ratio);
   RiskEstimator risk(options.thresholds);
   AvoidanceController controller;
   NativeDashboard dashboard(options.native_dashboard);
   std::unique_ptr<WebServer> web;
   if (options.web_dashboard) { web = std::make_unique<WebServer>(); web->start(); }
   std::unique_ptr<RunArtifacts> artifacts;
+  std::unique_ptr<UdpControlOutput> control_output;
+  if (!options.control_output.empty()) {
+    control_output = std::make_unique<UdpControlOutput>(options.control_output);
+    std::cout << "Applied commands: udp://" << options.control_output << '\n';
+  }
   std::optional<SimulationFrame> previous;
+  cv::Size simulator_frame_size;
   while (auto frame = server.receive()) {
     if (previous && frame->frame_id <= previous->frame_id) {
       throw std::runtime_error("stale or restarted frame ID received; reconnect to start a new run");
     }
     if (!previous) {
+      simulator_frame_size = frame->bgr.size();
+      VirtualHardwareState initial_state;
+      frame->bgr = hardware.capture(frame->bgr, frame->frame_id, frame->simulation_time_s,
+                                    initial_state);
       previous = std::move(frame);
       server.send(previous->frame_id, {});
       if (options.record) artifacts = std::make_unique<RunArtifacts>("artifacts", "simulate " + options.scenario,
-                                                                     previous->bgr.size(), 30.0);
+                                                                     previous->bgr.size(),
+                                                                     hardware.profile().target_fps,
+                                                                     initial_state);
       continue;
     }
-    if (frame->bgr.size() != previous->bgr.size()) throw std::runtime_error("simulator dimensions changed mid-run");
+    if (frame->bgr.size() != simulator_frame_size) {
+      throw std::runtime_error("simulator dimensions changed mid-run");
+    }
+    VirtualHardwareState hardware_state;
+    frame->bgr = hardware.capture(frame->bgr, frame->frame_id, frame->simulation_time_s,
+                                  hardware_state);
+    const ExecutionMode next_mode = compatible_mode(options.mode, hardware_state.gpu_available);
+    if (next_mode != active_mode) {
+      active_mode = next_mode;
+      perception = std::make_unique<OpenClPerception>(active_mode);
+      scheduler = std::make_unique<TileScheduler>(active_mode, options.gpu_ratio);
+      std::cout << "Frame " << frame->frame_id
+                << ": simulated GPU unavailable; CPU failover active.\n";
+    }
+    hardware_state.fallback_active = active_mode != options.mode;
     PerceptionResult result;
-    Telemetry telemetry = process_pair(*frame, previous->bgr, perception, scheduler, risk, controller, result);
-    telemetry.mode = to_string(options.mode);
+    const double frame_interval_s = std::max(0.001, frame->simulation_time_s -
+                                                     previous->simulation_time_s);
+    Telemetry telemetry = process_pair(*frame, previous->bgr, *perception, *scheduler, risk,
+                                       controller, result, frame_interval_s,
+                                       hardware_state);
+    telemetry.mode = to_string(active_mode);
+    hardware.apply_thermal_penalty(frame->simulation_time_s, hardware_state);
+    const ControlCommand applied = hardware.deliver(telemetry.command, frame->simulation_time_s,
+                                                     hardware_state);
+    add_emulated_latencies(telemetry, hardware_state);
     cv::Mat annotated = dashboard.render(frame->bgr, result, telemetry);
-    server.send(frame->frame_id, telemetry.command);
+    server.send(frame->frame_id, applied);
+    if (control_output) control_output->send(frame->frame_id, frame->simulation_time_s, applied);
     if (web) web->publish(telemetry_json(telemetry));
     if (artifacts) artifacts->append(telemetry, annotated);
     if (!dashboard.show(annotated)) break;
@@ -421,6 +528,17 @@ int run_application(int argc, char** argv) {
                 << device.platform << " | " << device.driver << '\n';
     }
     return devices.empty() ? 1 : 0;
+  }
+  if (command == "hardware-profiles") {
+    std::cout << "PROFILE                 CAMERA       GPU  DECLARED CONSTRAINTS\n";
+    for (const auto& profile : hardware_profiles()) {
+      std::cout << std::left << std::setw(23) << profile.name << ' '
+                << profile.frame_width << 'x' << profile.frame_height << '@'
+                << profile.target_fps << "  " << (profile.gpu_available ? "yes" : "no ")
+                << "  " << profile.description << '\n';
+    }
+    std::cout << "\n*-sim profiles are declared host-side emulations, not measured board results.\n";
+    return 0;
   }
   if (command == "replay") {
     Options options = parse_options(args);
