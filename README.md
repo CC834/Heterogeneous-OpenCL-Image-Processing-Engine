@@ -1,18 +1,54 @@
-# FlowGuard OpenCL
+# FlowGuard OpenCL — Exploring Real-Time Visual Drone Collision Avoidance Across CPU and GPU
 
-Visual collision awareness and simulated avoidance for a kinematic drone, with the
-same perception workload scheduled across OpenCL CPU and GPU devices.
+[![CI](https://github.com/CC834/flowguard-opencl/actions/workflows/ci.yml/badge.svg)](https://github.com/CC834/flowguard-opencl/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/CC834/flowguard-opencl)](https://github.com/CC834/flowguard-opencl/releases/tag/v1.0.0)
+[![License: MIT](https://img.shields.io/badge/License-MIT-5ee5c1.svg)](LICENSE)
+[![C++17](https://img.shields.io/badge/C%2B%2B-17-4b8bbe.svg)](CMakeLists.txt)
 
-FlowGuard turns a small heterogeneous-computing experiment into a closed-loop
-system you can see and measure. Blender renders a deterministic first-person
-flight, the C++ engine estimates image motion without simulator ground truth, and
-the controller steers or brakes before a collision. Native and browser dashboards
-show what the system sees, decides, and spends time on.
+**Can a drone infer an approaching collision from ordinary camera motion, react in
+time, and schedule the work effectively across the CPU and GPU of an edge-class
+computer?**
+
+FlowGuard explores that question as a closed-loop system you can see and measure.
+Blender renders deterministic first-person flights, a C++/OpenCL engine estimates
+motion without access to simulator ground truth, and a controller steers or brakes
+from visual risk alone. The same workload can run on an OpenCL CPU, GPU, fixed
+CPU/GPU split, or adaptive split so their real latency trade-offs can be compared.
 
 > FlowGuard is a research prototype with simulated avoidance. It is not a
 > safety-certified flight controller.
 
-![FlowGuard visual avoidance replay](docs/assets/flowguard-demo.gif)
+## See it in action
+
+The 24-second montage below uses the final accepted Blender runs—not hand-authored
+UI animation. It shows the frontal wall, offset pillar, doorway, corridor, safe
+lateral pass, and moving crossing obstacle through FlowGuard's annotated native
+dashboard.
+
+![FlowGuard six-scenario collision-avoidance montage](docs/assets/flowguard-demo.gif)
+
+[Watch the higher-quality MP4](docs/assets/flowguard-scenarios.mp4) ·
+[Open the static poster](docs/assets/flowguard-poster.jpg) ·
+[Read how the demo was produced](docs/DEMO.md)
+
+## Why explore this area?
+
+- **Collision decisions are deadline-sensitive.** A useful warning must arrive
+  before the vehicle has already consumed its stopping or turning distance.
+- **On-device perception matters.** A drone cannot assume a fast or reliable network
+  connection, so camera processing and avoidance need to work locally.
+- **Monocular cameras are widely available.** Optical expansion and motion fields can
+  provide time-to-collision cues without pretending to provide LiDAR-quality depth.
+- **Edge hardware is heterogeneous.** CPUs and GPUs have different strengths, while
+  transfers and synchronization can erase the expected speedup. Measuring all four
+  execution modes is more useful than assuming the GPU or a mixed mode must win.
+- **Simulation makes the experiment repeatable.** Fixed seeds and evaluation-only
+  ground truth allow risky situations to be tested consistently without presenting
+  simulation as real-flight evidence.
+
+The project therefore investigates three connected problems: visual motion
+estimation, stable avoidance decisions, and truthful heterogeneous-compute
+benchmarking.
 
 ![FlowGuard benchmark comparison](docs/assets/benchmark-chart.svg)
 
