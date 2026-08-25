@@ -1,92 +1,133 @@
+# FlowGuard OpenCL
 
-## Overview
-This project implements heterogeneous image processing using OpenCL, utilizing both CPU and GPU devices concurrently to apply Gaussian blur to a stream of 5000 images.
+Visual collision awareness and simulated avoidance for a kinematic drone, with the
+same perception workload scheduled across OpenCL CPU and GPU devices.
 
-## Hardware Tested
-- CPU: Intel Core i7-12700
-- GPU: Intel UHD Graphics 770 (integrated)
+FlowGuard turns a small heterogeneous-computing experiment into a closed-loop
+system you can see and measure. Blender renders a deterministic first-person
+flight, the C++ engine estimates image motion without simulator ground truth, and
+the controller steers or brakes before a collision. Native and browser dashboards
+show what the system sees, decides, and spends time on.
 
-## Two Approaches Implemented
+> FlowGuard is a research prototype with simulated avoidance. It is not a
+> safety-certified flight controller.
 
-### Approach 1: Image-Level Distribution (`heterogeneous_blur.c`)
-Complete images are assigned to either CPU or GPU based on a configurable ratio. Devices work independently on separate images.
+![FlowGuard visual avoidance replay](docs/assets/flowguard-demo.gif)
 
-### Approach 2: Split-Image Distribution (`split_image_blur.c`)
-Each image is split horizontally between devices. CPU processes top rows, GPU processes bottom rows, with 1-pixel halo overlap for correct blur at boundaries.
+![FlowGuard benchmark comparison](docs/assets/benchmark-chart.svg)
 
-## Files
-```
-├── heterogeneous_blur.c    # Approach 1: Image-level distribution
-├── split_image_blur.c      # Approach 2: Split-image distribution
-├── gaussian_kernel.cl      # OpenCL kernel (shared by both approaches)
-├── gaussian_blur.c         # Single-device baseline (from Lab 5)
-└── README.md               # This file
-```
+## What is implemented
 
-## Requirements
-- OpenCL runtime (Intel OpenCL for CPU and GPU)
-- CImg library (included in `./CImg/`)
-- libjpeg
+- Blender 4.5 LTS kinematic simulation at 30 Hz and 640×360, with six seeded scenarios.
+- Length-prefixed, loopback-only TCP frames and versioned command messages.
+- OpenCL grayscale, 3×3 Gaussian filter, three-level pyramid, and coarse-to-fine
+  16×16 block matching with a ±6-pixel search at every level.
+- Best/second-best confidence rejection, weighted affine motion, focus of
+  expansion, radial TTC proxies, spatial clusters, and left/centre/right risk.
+- Smoothed 2 m/s, ±60°/s avoidance with 3 m/s² braking and turn hysteresis.
+- CPU-only, GPU-only, fixed heterogeneous, and adaptive heterogeneous modes.
+- OpenCV live dashboard and recording, plus a React/TypeScript live/replay dashboard.
+- JSONL telemetry, annotated MP4, CSV benchmark results, metadata, and static reports.
 
-## Building
-```
-g++ -o split_image_blur split_image_blur.c -lOpenCL -ljpeg -lpthread
-g++ -o heterogeneous_blur heterogeneous_blur.c -lOpenCL -lX11 -lpthread -lpng -ljpeg -I./CImg
+Ground truth lives in `Telemetry::evaluation` and is used only when recording
+outcomes. Perception and control APIs cannot accept it.
 
-```
+## Quick start
 
-## Usage
+Install the platform packages from [the setup guide](docs/SETUP.md), then build:
 
-### Approach 1: Image-Level Distribution
 ```bash
-# Heterogeneous mode (CPU + GPU)
-./heterogeneous_blur both [gpu_ratio] [batch_size]
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+cmake --build build
+ctest --test-dir build --output-on-failure
 
-# CPU-only baseline
-./heterogeneous_blur cpu
-
-# GPU-only baseline
-./heterogeneous_blur gpu
-
-# Examples with optimal parameters
-./heterogeneous_blur both 0.728 35    # Best performance
-./heterogeneous_blur both 0.834 1200  # Best load balance
+cd web
+npm ci
+npm run build
+cd ..
 ```
 
-### Approach 2: Split-Image Distribution
+Inspect exactly which OpenCL devices FlowGuard can use:
+
 ```bash
-./split_image_blur [gpu_ratio] [batch_size]
-
-# Example with optimal parameters
-./split_image_blur 0.837 35
+build/flowguard devices
 ```
 
-## Parameters
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| `gpu_ratio` | Fraction of work assigned to GPU (0.0-1.0) | 0.5 |
-| `batch_size` | Images processed per batch | 500 |
+Run a synthetic replay first:
 
-## Optimal Configurations
+```bash
+build/flowguard replay --synthetic expanding --frames 120 --mode cpu --dashboard native --record
+```
 
-### Approach 1 (Image-Level)
-- **Best throughput:** batch=35, gpu_ratio=0.728 → 583ms, 8568 img/s
-- **Best balance:** batch=1200, gpu_ratio=0.834 → 0% imbalance
+Then launch the closed-loop Blender corridor scenario. Blender starts headlessly by
+default; add `--visible` to see its window.
 
-### Approach 2 (Split-Image)
-- **Best throughput:** batch=35, gpu_ratio=0.837 → 808ms, 6189 img/s
-- **Best balance:** batch=35, gpu_ratio=0.837 → 0.3% imbalance
+```bash
+build/flowguard simulate --scenario corridor --mode adaptive --dashboard native,web --record
+```
 
-## Key Findings
-1. Smaller batch sizes (35-50) significantly outperform larger ones (~2x speedup)
-2. Approach 1 outperforms Approach 2 by ~1.38x for this workload
-3. Heterogeneous execution beats GPU-only by 1.58x at optimal configuration
-4. CPU becomes communication-bound at large batch sizes (Transfer OUT dominates)
+The local web dashboard is available at `http://127.0.0.1:8080` when enabled.
 
-## Ratio Calibration
-To find optimal GPU ratio for your hardware:
-1. Run with 50/50 split: `./heterogeneous_blur both 0.5 35`
-2. Note the recommended ratio in output
-3. Re-run with recommended ratio
+## CLI
 
-Formula: `GPU_ratio = T_cpu / (T_cpu + T_gpu)`
+```text
+flowguard devices
+flowguard simulate --scenario corridor --mode adaptive --dashboard native,web --record
+flowguard replay --input flight.mp4 --mode fixed --gpu-ratio 0.70
+flowguard benchmark --suite default --modes cpu,gpu,fixed,adaptive --repeats 5
+flowguard report --run artifacts/<run-id>
+```
+
+Simulation scenarios are `frontal-wall`, `offset-pillar`, `doorway`, `corridor`,
+`safe-lateral-pass`, and `crossing-obstacle`. Warning thresholds default to 3.0
+seconds (yellow) and 1.5 seconds (red); use `--yellow-ttc` and `--red-ttc` to change
+them.
+
+## Honest benchmarking
+
+`flowguard benchmark` creates the deterministic frame sequence once, runs each mode
+sequentially, excludes one warm-up frame, and disables visualization. Its CSV
+contains throughput, p50/p95/p99 latency, and 33.3 ms deadline misses. Metadata
+states the input and measurement boundary.
+
+The included current-host chart is a ten-measured-frame smoke comparison, not a
+stable performance study or edge-device result. The retained CSV is in
+[`benchmarks/current`](benchmarks/current/ryzen-ai-7-350-radeon-860m/README.md).
+The only historical Intel logs are preserved in
+[`benchmarks/legacy`](benchmarks/legacy/README.md). They are labelled as legacy raw
+evidence, and the old unsupported speedup headline has been removed.
+
+Performance acceptance means reporting every mode truthfully. Adaptive mode is not
+assumed to win, especially on an integrated GPU sharing memory with the CPU.
+
+## Architecture
+
+```text
+CLI / OpenCV UI / React UI / Blender transport
+                         ↓
+                  frame orchestration
+                         ↓
+           perception → risk → control
+                  ↕ scheduling policy
+                         ↓
+           OpenCL / OpenCV / TCP / artifacts
+```
+
+See [architecture](docs/ARCHITECTURE.md), [simulator protocol](docs/PROTOCOL.md),
+and the [versioned telemetry schema](docs/telemetry.schema.json) for the precise
+contracts.
+
+## Limits and edge-device roadmap
+
+Version 1 uses visual expansion and block motion, not depth sensors or aerodynamic
+flight physics. Blender render time and perception time are separate. Results from
+the current Ryzen AI 7 350/Radeon 860M machine must never be relabelled as Jetson,
+Raspberry Pi, embedded, or real-drone performance.
+
+The post-v1 deployment milestone is documented in [ROADMAP.md](ROADMAP.md). It
+requires real-device selection, lower-resolution presets, power measurements where
+available, and new device-labelled reports before making any edge claim.
+
+## License
+
+MIT © 2026 Abbe. See [LICENSE](LICENSE).

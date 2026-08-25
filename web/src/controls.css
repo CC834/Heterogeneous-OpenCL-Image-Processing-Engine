@@ -1,0 +1,21 @@
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.controls button,
+.controls select {
+  background: #102229;
+  color: #d9edf1;
+  border: 1px solid #294047;
+  padding: 9px 13px;
+  font: 600 11px "IBM Plex Mono";
+}
+
+@media (max-width: 760px) {
+  .controls button,
+  .controls select {
+    display: none;
+  }
+}
